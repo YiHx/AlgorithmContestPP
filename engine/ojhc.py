@@ -185,15 +185,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                         else "呼吸"),
                 notes="trust-app-limit")
             profile_source = "app-limit"
-            if dev_max < 30:
-                print(fail(f"设备上限只有 {dev_max}（低于 30），引擎最多只能输出 "
-                            f"{round(prof.user_max_pct / 100 * dev_max)}，几乎不可能有感觉。"))
-                print(info("请打开 DG-Lab App：把 A/B 通道的「上限」调到 40，"
-                           "保持 App 在前台，然后重新运行。"))
-                print(info("确认上限是否生效：python -c \"import json,urllib.request; "
-                           "d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/api/status')); "
-                           "print(d['max_strength_A'], d['max_strength_B'])\""))
-                return 2
+            if dev_max < 10:
+                print(warn(f"注意：App 里当前设备上限只有 {dev_max}，"
+                           f"引擎会按它的 65%~90% 输出（很弱）。"
+                           f"每个人的感知阈值不同，觉得不够就自己在 App 里调高，引擎不会替你设下限。"))
             print(info(f"无校准模式：设备上限 {dev_max}，输出范围 = 上限的 "
                        f"{prof.perceptible_pct}%~{prof.user_max_pct}%"
                        f"（s2≈{prof.intensity_for(0.35)}% s3≈{prof.intensity_for(0.50)}% "
