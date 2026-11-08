@@ -47,8 +47,7 @@
           "max": 20,
           "description": "逐次递增，封顶 90%（App 上限的 90%）"
         }
-      ],
-      "description": "简单模式：单次 WA/TLE/RE 会电（按档位强度）；长时间没 AC 会按间隔电并逐次加强"
+      ]
     },
     {
       "section": "连接",
