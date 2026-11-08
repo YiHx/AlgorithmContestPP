@@ -2,13 +2,16 @@
   "manifest_version": 3,
   "name": "算法竞赛++ 浏览器桥接",
   "version": "0.1.0",
-  "description": "把 AtCoder / 洛谷 / 牛客 比赛页面数据（登录态、页面上下文）转发给本机 算法竞赛++ Engine，不接管账号密码。",
-  "permissions": ["storage"],
+  "description": "把 AtCoder / 洛谷 / 牛客 / Codeforces 比赛页面数据（登录态、页面上下文）转发给本机 算法竞赛++ Engine，不接管账号密码。",
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "http://127.0.0.1/*",
     "https://atcoder.jp/*",
     "https://www.luogu.com.cn/*",
-    "https://ac.nowcoder.com/*"
+    "https://ac.nowcoder.com/*",
+    "https://codeforces.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -18,9 +21,13 @@
       "matches": [
         "https://atcoder.jp/contests/*",
         "https://www.luogu.com.cn/contest/*",
-        "https://ac.nowcoder.com/acm/contest/*"
+        "https://ac.nowcoder.com/acm/contest/*",
+        "https://codeforces.com/contest/*",
+        "https://codeforces.com/gym/*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],

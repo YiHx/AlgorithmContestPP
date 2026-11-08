@@ -221,6 +221,31 @@ class TestPlatforms(unittest.TestCase):
         self.assertEqual(platforms_mod.expected_solves([], 1400), 3.0)
 
 
+class TestCFFastPath(unittest.TestCase):
+    """CF 浏览器快速通道（扩展盯页面）与官方 API 的合并去重。"""
+
+    def test_fast_path_merge(self) -> None:
+        from unittest import mock
+        from ojhc_lib.platforms import codeforces as cf
+
+        class FakeHub:
+            def __init__(self) -> None:
+                self.subs = [cf.Submission(sid="100", rel_s=10.0,
+                                           verdict="WRONG_ANSWER", problem="A")]
+
+            def drain(self, cursor):
+                return [s for s in self.subs if int(s.sid) > int(cursor or 0)]
+
+        adapter = cf.CodeforcesAdapter("2256", "tester")
+        adapter.attach_fast(FakeHub())
+        self.assertEqual(adapter.poll_sleep_s, 0.4)
+        with mock.patch.object(cf, "_http_get_json", return_value={"status": "OK", "result": []}):
+            first = asyncio.run(adapter.poll(None))
+            self.assertEqual([s.sid for s in first], ["100"])
+            second = asyncio.run(adapter.poll("100"))
+            self.assertEqual(second, [])
+
+
 class TestStore(unittest.TestCase):
     def test_roundtrip_and_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

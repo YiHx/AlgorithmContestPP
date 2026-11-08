@@ -58,6 +58,11 @@ class CodeforcesAdapter:
         self._rows: list[dict] = []
         self._standings: Standings | None = None
         self._standings_at = 0.0
+        # 浏览器快速通道（扩展盯页面，绕开 CF API 2s 限速）；None = 未启用
+        self.fast = None
+        self._fast_cursor: str | None = None
+        self._last_native_poll = 0.0
+        self.poll_sleep_s = 2.2
 
     async def load_meta(self) -> ContestMeta:
         await self.limiter.wait()
@@ -82,31 +87,56 @@ class CodeforcesAdapter:
         )
         return self._meta
 
+    def attach_fast(self, source) -> None:
+        """接入浏览器扩展快速通道（source.drain(cursor)）。"""
+        self.fast = source
+        self.poll_sleep_s = 0.4
+
     async def poll(self, after: str | None) -> list[Submission]:
-        await self.limiter.wait()
-        data = _http_get_json(
-            f"{CF_API}contest.status?contestId={self.contest_id}"
-            f"&handle={self.handle}&from=1&count=100")
-        if data.get("status") != "OK":
-            raise PlatformError(f"CF API: {data.get('comment')}")
+        collected: dict[int, Submission] = {}
+
+        # 1) 浏览器快速通道：无 CF API 限速，先收
+        if self.fast is not None:
+            try:
+                for sub in self.fast.drain(self._fast_cursor):
+                    self._fast_cursor = sub.sid
+                    try:
+                        collected[int(sub.sid)] = sub
+                    except (TypeError, ValueError):
+                        continue
+            except Exception:  # noqa: BLE001
+                pass
+
+        # 2) 官方 API：遵守 2.1s 限速；有快速通道时不必每轮都打
+        now = time.monotonic()
+        need_native = (self.fast is None
+                       or now - self._last_native_poll >= self.limiter.min_interval_s)
+        if need_native:
+            await self.limiter.wait()
+            self._last_native_poll = time.monotonic()
+            data = _http_get_json(
+                f"{CF_API}contest.status?contestId={self.contest_id}"
+                f"&handle={self.handle}&from=1&count=100")
+            if data.get("status") != "OK":
+                raise PlatformError(f"CF API: {data.get('comment')}")
+            duration_s = getattr(getattr(self, "meta", None), "duration_s", None)
+            for item in data["result"]:
+                sid = int(item["id"])
+                rel_s = float(item.get("relativeTimeSeconds") or 0)
+                if duration_s and rel_s > duration_s:   # 赛外提交（INT_MAX）忽略
+                    continue
+                collected[sid] = Submission(
+                    sid=str(sid),
+                    rel_s=rel_s,
+                    verdict=normalize_verdict(item.get("verdict")),
+                    problem=str((item.get("problem") or {}).get("index") or "?"),
+                    points=float(item.get("points") or 0.0),
+                    raw=item,
+                )
+
         after_id = int(after) if after else None
-        out: list[Submission] = []
-        duration_s = getattr(getattr(self, "meta", None), "duration_s", None)
-        for item in data["result"]:
-            sid = int(item["id"])
-            if after_id is not None and sid <= after_id:
-                continue
-            rel_s = float(item.get("relativeTimeSeconds") or 0)
-            if duration_s and rel_s > duration_s:   # CF 对赛外提交返回 INT_MAX，直接忽略
-                continue
-            out.append(Submission(
-                sid=str(sid),
-                rel_s=rel_s,
-                verdict=normalize_verdict(item.get("verdict")),
-                problem=str((item.get("problem") or {}).get("index") or "?"),
-                points=float(item.get("points") or 0.0),
-                raw=item,
-            ))
+        out = [sub for sid, sub in collected.items()
+               if after_id is None or sid > after_id]
         out.sort(key=lambda s: int(s.sid))
         return out
 

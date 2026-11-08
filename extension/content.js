@@ -12,13 +12,14 @@
   const CONTEST_ID = contestIdFromUrl();
 
   const POLL_MS = 3000;
+  const FAST_POLL_MS = 1000;   // Codeforces：扩展盯页面，绕过官方 API 的 2s 限速
   const KNOWN_VERDICTS = [
     "AC", "WA", "TLE", "MLE", "RE", "CE", "WJ", "QLE", "OLE", "IE",
     "WRONG_ANSWER", "TIME_LIMIT_EXCEEDED", "RUNTIME_ERROR", "COMPILATION_ERROR",
     "答案正确", "答案错误", "运行超时", "内存超限", "运行错误", "编译错误"
   ];
 
-  let backoff = POLL_MS;
+  let backoff = PLATFORM === "codeforces" ? FAST_POLL_MS : POLL_MS;
   let lastError = "";
 
   function detectPlatform() {
@@ -26,6 +27,7 @@
     if (host.endsWith("atcoder.jp")) return "atcoder";
     if (host.endsWith("luogu.com.cn")) return "luogu";
     if (host.endsWith("nowcoder.com")) return "nowcoder";
+    if (host.endsWith("codeforces.com")) return "codeforces";
     return null;
   }
 
@@ -35,6 +37,7 @@
     if (PLATFORM === "atcoder" && (m = path.match(/\/contests\/([A-Za-z0-9_-]+)/))) return m[1];
     if (PLATFORM === "luogu" && (m = path.match(/\/contest\/(\d+)/))) return m[1];
     if (PLATFORM === "nowcoder" && (m = path.match(/\/acm\/contest\/(\d+)/))) return m[1];
+    if (PLATFORM === "codeforces" && (m = path.match(/(?:contest|gym)\/(\d+)/))) return m[1];
     return null;
   }
 
@@ -217,7 +220,84 @@
     return payload;
   }
 
-  const COLLECTORS = { atcoder: collectAtCoder, luogu: collectLuogu, nowcoder: collectNowcoder };
+  // ------------------------------------------------------------ Codeforces（快速通道）
+  function cfVerdict(texts) {
+    for (const raw of texts) {
+      const t = (raw || "").trim();
+      if (!t) continue;
+      if (/^accepted$/i.test(t)) return "AC";
+      if (/wrong answer/i.test(t)) return "WRONG_ANSWER";
+      if (/time limit/i.test(t)) return "TIME_LIMIT_EXCEEDED";
+      if (/memory limit/i.test(t)) return "MEMORY_LIMIT_EXCEEDED";
+      if (/runtime error/i.test(t)) return "RUNTIME_ERROR";
+      if (/compilation error/i.test(t)) return "COMPILATION_ERROR";
+      if (/presentation error/i.test(t)) return "PRESENTATION_ERROR";
+      if (/idleness limit/i.test(t)) return "IDLENESS_LIMIT_EXCEEDED";
+      if (/judgement failed|judgment failed/i.test(t)) return "JUDGEMENT_FAILED";
+      if (/in queue|running on test|testing/i.test(t)) return "TESTING";
+    }
+    return "UNKNOWN";
+  }
+
+  async function collectCodeforces(session) {
+    const payload = {};
+    let resp;
+    try {
+      resp = await fetch(`/contest/${CONTEST_ID}/my`, { credentials: "same-origin" });
+    } catch (e) {
+      return payload;
+    }
+    if (!resp.ok || resp.redirected) return payload;
+    const html = await resp.text();
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const items = [];
+    for (const row of doc.querySelectorAll("table tbody tr")) {
+      const subLink = row.querySelector('a[href*="/submission/"]');
+      if (!subLink) continue;
+      const m = (subLink.getAttribute("href") || "").match(/\/submission\/(\d+)/);
+      if (!m) continue;
+      const sid = parseInt(m[1], 10);
+      if (!Number.isFinite(sid)) continue;
+      const texts = [...row.querySelectorAll("td")].map(
+        (td) => td.textContent.replace(/\s+/g, " ").trim());
+      const problemLink = row.querySelector('a[href*="/problem/"]');
+      const pm = problemLink
+        ? (problemLink.getAttribute("href") || "").match(/\/problem\/([A-Za-z0-9]+)/) : null;
+      const when = texts.find((t) => /^\d{1,2}:\d{2}:\d{2}$/.test(t));
+      const rel = when
+        ? when.split(":").reduce((acc, x) => acc * 60 + parseInt(x, 10), 0) : null;
+      items.push({
+        sid: String(sid),
+        verdict: cfVerdict(texts),
+        problem: pm ? pm[1] : "?",
+        rel_s: rel,
+      });
+    }
+    if (!items.length) return payload;
+
+    // 用 chrome.storage 记录已上报的最大 submission id：
+    // 首次只建立基线（旧提交不补电），之后只推新增的
+    const key = `ojhc_cf_${CONTEST_ID}_maxsid`;
+    const maxSid = Math.max(...items.map((i) => parseInt(i.sid, 10)));
+    const stored = await new Promise((resolve) => {
+      chrome.storage.local.get([key], (data) => resolve(data[key]));
+    });
+    if (stored === undefined || stored === null) {
+      await new Promise((resolve) => chrome.storage.local.set({ [key]: maxSid }, resolve));
+      return payload;
+    }
+    const fresh = items
+      .filter((i) => parseInt(i.sid, 10) > Number(stored))
+      .sort((a, b) => parseInt(a.sid, 10) - parseInt(b.sid, 10));
+    if (fresh.length) {
+      await new Promise((resolve) => chrome.storage.local.set({ [key]: maxSid }, resolve));
+      payload.submissions = fresh;
+    }
+    return payload;
+  }
+
+  const COLLECTORS = { atcoder: collectAtCoder, luogu: collectLuogu,
+                       nowcoder: collectNowcoder, codeforces: collectCodeforces };
 
   async function loop() {
     if (!CONTEST_ID) return;
@@ -240,7 +320,8 @@
         if (payload.submissions && payload.submissions.length) {
           ok = (await post("/ingest/submissions", payload.submissions)) && ok;
         }
-        backoff = ok ? POLL_MS : Math.min(backoff * 2, 30000);
+        backoff = ok ? (PLATFORM === "codeforces" ? FAST_POLL_MS : POLL_MS)
+                     : Math.min(backoff * 2, 30000);
       } catch (e) {
         lastError = String(e);
         backoff = Math.min(backoff * 2, 30000);

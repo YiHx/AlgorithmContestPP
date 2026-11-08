@@ -517,7 +517,7 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
                 cursor = sub.sid
             for ev, dec in await runner.check_timeouts(elapsed):
                 runner.print_line(ev, dec)
-            await asyncio.sleep(2.5)
+            await asyncio.sleep(getattr(adapter, "poll_sleep_s", 2.5))
         return runner.finalize()
     finally:
         if device_started:

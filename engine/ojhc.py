@@ -268,6 +268,17 @@ def cmd_run(args: argparse.Namespace) -> int:
                     duration_s=args.duration_min * 60)
                 print(info(f"平台 {platforms_mod.PLATFORM_LABELS.get(platform, platform)} · "
                            f"比赛 {contest_id} · handle {args.handle}"))
+                if platform == "codeforces" and hasattr(adapter, "attach_fast"):
+                    try:
+                        hub = bridge_mod.BridgeHub(
+                            "codeforces", contest_id, args.handle,
+                            args.duration_min * 60, port=args.bridge_port)
+                        hub.start()
+                        adapter.attach_fast(hub)
+                        print(info(f"快速通道（可选）：{hub.url} ← 浏览器扩展盯 CF 页面，"
+                                   f"可把延迟压到 ~1~2 秒；不装扩展则走官方 API（~2~4 秒）"))
+                    except OSError as exc:
+                        print(warn(f"快速通道端口不可用，改走官方 API：{exc}"))
     except platforms_mod.PlatformError as exc:
         print(fail(str(exc)))
         if hub is not None:
