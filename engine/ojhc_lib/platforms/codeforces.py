@@ -111,9 +111,14 @@ class CodeforcesAdapter:
                 for sub in self.fast.drain(self._fast_cursor):
                     self._fast_cursor = sub.sid
                     try:
-                        collected[int(sub.sid)] = sub
+                        sid_int = int(sub.sid)
                     except (TypeError, ValueError):
                         continue
+                    # 标记来源：渲染"启动前历史"过滤时放行扩展新上报的提交
+                    if not isinstance(sub.raw, dict):
+                        sub.raw = {}
+                    sub.raw = {**sub.raw, "_fast": True}
+                    collected[sid_int] = sub
             except Exception:  # noqa: BLE001
                 pass
 

@@ -497,13 +497,20 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
                     runner.degraded.append(f"poll error: {exc}")
                 batch = []
             if first_poll:
-                # 第一次拉取的是"引擎启动前已有的提交"（虚拟参赛/补题历史）：
-                # 只把它当作基线游标，不触发电击，避免一启动就被历史 WA 电。
+                # 第一次拉取里可能混着"启动前已有的历史提交"和"扩展刚上报的新提交"：
+                # 只跳过官方 API 的历史，扩展快速通道的提交照常处理。
                 first_poll = False
-                if batch:
-                    cursor = batch[-1].sid
-                    print(f"[live] 已忽略启动前的历史提交 {len(batch)} 条（不触发电击）")
-                    continue
+                fast_items = [s for s in batch
+                              if isinstance(s.raw, dict) and s.raw.get("_fast")]
+                native_items = [s for s in batch if s not in fast_items]
+                if native_items:
+                    cursor = native_items[-1].sid
+                    print(f"[live] 已忽略启动前的历史提交 {len(native_items)} 条（不触发电击）")
+                if fast_items:
+                    print(f"[live] 扩展上报新提交 {len(fast_items)} 条，正常处理")
+                    batch = fast_items
+                else:
+                    batch = []
             for sub in batch:
                 # CF 虚拟参赛/赛外提交的 relativeTimeSeconds 可能是 INT_MAX：用本次真实 elapsed 代替
                 if (sub.rel_s is None or sub.rel_s < 0
