@@ -364,14 +364,26 @@ class OjhPlugin:
     async def run(self, engine_port: int | None, engine_token: str | None) -> int:
         await self.connect_dghub()
         if not await self.wait_device(15.0):
-            await self._dg_log("设备未连接：仍会等 Engine，但不会输出", "warning")
-        if not await self.find_and_connect_engine(engine_port=engine_port,
-                                                  engine_token=engine_token):
-            await self._dg_log("没有找到 Engine（先运行 ojhC run --device）", "warning")
-            return 3
-        await self.push_status()
+            await self._dg_log("设备未连接：仍会常驻等待 Engine，但不会输出", "warning")
+        # 常驻模式：先在 DGHub 启用插件、后启动 Engine 也能连上；Engine 断开后回到等待
         try:
-            await self.engine_loop()
+            while self.running:
+                found = await self.find_and_connect_engine(
+                    engine_port=engine_port, engine_token=engine_token, timeout_s=30.0)
+                if not found:
+                    await self._dg_log("等待 Engine…（先运行 ojhC run --device）", "info")
+                    await self.push_status()
+                    await asyncio.sleep(3.0)
+                    continue
+                await self.push_status()
+                await self.engine_loop()
+                if not self.running:
+                    break
+                # Engine 断开：归零后回到等待（不退出进程，方便下一场直接复用）
+                await self._dg_log("Engine 已断开，回到等待状态", "warning")
+                self.engine_reader = None
+                self.engine_writer = None
+                await asyncio.sleep(2.0)
         finally:
             await self.zero_device("plugin exit")
             if self.dg_ws is not None:
