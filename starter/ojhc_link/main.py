@@ -19,6 +19,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -224,7 +225,7 @@ class OjhPlugin:
                             await self._engine_send({"op": "tuning", "tuning": self.tuning})
                         await self._dg_log(
                             f"配置已更新：{json.dumps(self.tuning, ensure_ascii=False)}")
-                        self.maybe_launch_engine()
+                        await self.maybe_launch_engine()
                 elif op == "ping":
                     await self._dg_send({"op": "pong", "t": msg.get("t")})
                 elif op == "stop":
@@ -331,7 +332,7 @@ class OjhPlugin:
             pass
 
     # -------------------------------------------------- Engine 启动器（插件页配置）
-    def _engine_dir(self) -> Path | None:
+    def _engine_dir(self):
         configured = str(self.cfg.get("engine_dir") or "").strip()
         candidates = []
         if configured:
@@ -344,40 +345,74 @@ class OjhPlugin:
             home / "Documents/deepseek-harness/default-workspace/OJ_DGHUB/engine",
             home / "OJ_DGHUB/engine",
             Path.cwd() / "engine",
+            Path.cwd(),
         ]
         for candidate in candidates:
             try:
-                if (candidate / "ojhC.py").is_file():
-                    return candidate
+                if (Path(candidate) / "ojhC.py").is_file():
+                    return Path(candidate)
             except OSError:
                 continue
         return None
 
-    def _build_engine_args(self) -> list[str] | None:
-        url = str(self.cfg.get("engine_url") or "").strip()
+    def _resolve_python(self) -> str:
+        configured = str(self.cfg.get("engine_python") or "").strip()
+        if configured and configured.lower() not in ("python", "python.exe"):
+            return configured
+        exe = sys.executable or ""
+        if "python" in os.path.basename(exe).lower():
+            return exe
+        return configured or "python"
+
+    @staticmethod
+    def _normalize_contest_url(raw: str) -> str:
+        """把倒计时/带参数的页面 URL 归一化成比赛 URL。"""
+        url = (raw or "").strip()
+        patterns = [
+            r"(https?://codeforces\.com/(?:contest|gym)/\d+)",
+            r"(https?://(?:www\.)?vjudge\.net/contest/\d+)",
+            r"(https?://atcoder\.jp/contests/[A-Za-z0-9_-]+)",
+            r"(https?://(?:www\.)?luogu\.com\.cn/contest/\d+)",
+            r"(https?://ac\.nowcoder\.com/acm/contest/\d+)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        return url
+
+    def _build_engine_args(self):
+        url = self._normalize_contest_url(str(self.cfg.get("engine_url") or ""))
         handle = str(self.cfg.get("engine_handle") or "").strip()
         if not url or not handle:
             return None
-        python_exe = str(self.cfg.get("engine_python") or "python").strip() or "python"
-        args = [python_exe, "ojhC.py", "run", "--url", url, "--handle", handle]
+        args = [self._resolve_python(), "ojhC.py", "run", "--url", url, "--handle", handle]
         if self.cfg.get("engine_device", True):
             args += ["--device", "--trust-app-limit"]
         if self.cfg.get("engine_virtual", False):
             args += ["--virtual"]
         return args
 
-    def maybe_launch_engine(self) -> None:
-        """按插件页配置启动引擎（新终端窗口），只启动一次。"""
+    async def maybe_launch_engine(self) -> None:
+        """按插件页配置启动引擎（新终端窗口）。失败会写到 DGHub 运行日志。"""
         if not self.cfg.get("auto_start_engine", False):
             return
+        if self.engine_writer is not None:      # 引擎已经连上
+            return
+        if self._engine_proc is not None:
+            if self._engine_proc.poll() is None:
+                return
+            self._launch_attempted = False      # 引擎已退出 → 允许重试
         if self._launch_attempted:
             return
-        if self.engine_writer is not None:
+        now = time.monotonic()
+        if now - getattr(self, "_last_launch_try", 0.0) < 10.0:
             return
+        self._last_launch_try = now
         args = self._build_engine_args()
         engine_dir = self._engine_dir()
         if not args or engine_dir is None:
-            print("[launcher] 未配置 URL/handle 或找不到引擎目录，跳过自动启动")
+            await self._dg_log("启动器：URL/用户名未填，或找不到引擎目录（ojhC.py 所在目录）", "warning")
             return
         flags = 0
         if os.name == "nt":
@@ -386,10 +421,9 @@ class OjhPlugin:
             self._engine_proc = subprocess.Popen(
                 args, cwd=str(engine_dir), creationflags=flags)
             self._launch_attempted = True
-            print(f"[launcher] 已在 {engine_dir} 启动引擎：{' '.join(args)}")
+            await self._dg_log(f"启动器：已打开引擎终端（{args[0]} ojhC.py run …）")
         except Exception as exc:  # noqa: BLE001
-            print(f"[launcher] 启动引擎失败：{exc}")
-            self._launch_attempted = True
+            await self._dg_log(f"启动器：启动引擎失败：{exc}", "warning")
 
     async def find_and_connect_engine(self, timeout_s: float = 120.0,
                                       engine_port: int | None = None,
@@ -498,6 +532,7 @@ class OjhPlugin:
         # 常驻模式：先在 DGHub 启用插件、后启动 Engine 也能连上；Engine 断开后回到等待
         try:
             while self.running:
+                await self.maybe_launch_engine()
                 found = await self.find_and_connect_engine(
                     engine_port=engine_port, engine_token=engine_token, timeout_s=30.0)
                 if not found:
