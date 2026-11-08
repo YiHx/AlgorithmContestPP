@@ -32,7 +32,7 @@ except ImportError as exc:  # pragma: no cover
 
 PLUGIN_ID = "ojhc_link"
 PLUGIN_VERSION = "0.1.0"
-HARD_CAP_PCT = 90           # 代码硬上限（配置改不动；App 上限本身是最终边界）
+HARD_CAP_PCT = 100           # 代码硬上限（配置改不动；App 上限本身是最终边界）
 
 TUNING_DEFAULTS = {
     "mode": "simple",       # simple=单次失败也电 + 没 AC 递增；pressure=压力算法
@@ -68,6 +68,7 @@ def normalize_tuning(cfg: dict) -> dict:
         "hourly_cap": num("hourly_cap", 5, 60, TUNING_DEFAULTS["hourly_cap"]),
         "allow_level_up": bool(cfg.get("allow_level_up", TUNING_DEFAULTS["allow_level_up"])),
         "preset": str(cfg.get("preset") or TUNING_DEFAULTS["preset"])[:32],
+        "hard_cap": min(100, max(0, int(cfg.get("max_intensity_pct", 90) or 90))),
     }
     return t
 

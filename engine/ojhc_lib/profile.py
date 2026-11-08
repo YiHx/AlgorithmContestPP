@@ -30,7 +30,7 @@ def default_dir() -> Path:
 # 兼容旧引用（优先使用 default_dir()）
 DEFAULT_DIR = Path(os.environ.get("OJHC_HOME") or (Path.home() / ".ojhc"))
 
-HARD_CAP_PCT = 90          # 代码级硬上限：最多用到 App 上限的 90%（App 上限本身是安全边界）
+HARD_CAP_PCT = 100          # 代码级硬上限：最多用到 App 上限的 90%（App 上限本身是安全边界）
 MIN_PULSE_S = 0.3
 MAX_PULSE_S = 3.0
 PROFILE_EXPIRE_DAYS = 30

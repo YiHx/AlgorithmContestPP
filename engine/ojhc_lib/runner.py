@@ -159,7 +159,8 @@ class SessionRunner:
                 # 没 AC 的电击逐次加强，封顶在 90%（App 上限的 90%）
                 esc = int(plugin_tuning.get("no_ac_escalation", 5))
                 tuned += min(self._no_ac_shocks, 20) * esc
-            decision.intensity = int(max(0, min(round(tuned), profile_mod.HARD_CAP_PCT)))
+            cap = min(profile_mod.HARD_CAP_PCT, int(plugin_tuning.get("hard_cap", 90)))
+            decision.intensity = int(max(0, min(round(tuned), cap)))
             if decision.intensity <= 0:
                 decision.would_fire = False
                 decision.deny = ["插件调参后强度为 0"]

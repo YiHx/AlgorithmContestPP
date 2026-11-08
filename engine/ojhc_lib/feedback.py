@@ -55,6 +55,7 @@ TUNING_DEFAULTS = {
     "no_ac_escalation": 5,       # 每次"没 AC"电击比上一次加多少（% of App 上限），封顶 90%
     "base_intensity": 74, "intensity_step": 4, "max_s": 4,
     "cooldown_s": 90, "hourly_cap": 30, "allow_level_up": False, "preset": "呼吸",
+    "hard_cap": 90,              # 插件页面的硬上限（0~100，100%=App 上限）
 }
 
 
@@ -83,6 +84,7 @@ def normalize_tuning(raw: dict | None) -> dict | None:
         "hourly_cap": num("hourly_cap", 5, 60, 30),
         "allow_level_up": bool(raw.get("allow_level_up", False)),
         "preset": str(raw.get("preset") or "呼吸")[:32],
+        "hard_cap": num("hard_cap", 0, 100, 90),
     }
 
 NO_AC_CAP = 5

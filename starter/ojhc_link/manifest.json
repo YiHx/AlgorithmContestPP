@@ -125,11 +125,11 @@
         {
           "key": "max_intensity_pct",
           "type": "percent",
-          "label": "本插件硬上限（代码上限 90%）",
+          "label": "本插件硬上限（0~100%，100%=App 上限）",
           "default": 90,
           "min": 0,
-          "max": 90,
-          "description": "即使 Engine 请求更高，也不会超过这个值和代码里的 90%；App 上限是最终边界"
+          "max": 100,
+          "description": "没 AC 的递增电击也停在这个值；代码兜底 100%，永远不会超过 App 上限"
         },
         {
           "key": "show_status",
