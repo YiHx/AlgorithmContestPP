@@ -204,6 +204,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(info(f"安全边界：强度 ≤{feedback_mod.HARD_MAX_S}% / 脉冲 ≤3s / 冷却与令牌桶生效 / "
                    "Ctrl+C 或会话结束立即急停"))
 
+    if args.virtual and args.mode == "pressure":
+        print(warn("虚拟参赛没有官方排名数据：压力算法模式会缺少「排名」子分（自动降级）。"
+                   "想体验完整压力算法，建议用 --mode simple 或赛后在正式比赛上跑。"))
+
     opts = runner_mod.RunOptions(
         handle=args.handle or "", rating=args.rating, preset=args.preset,
         target_percentile=args.percentile, speed=args.speed,
