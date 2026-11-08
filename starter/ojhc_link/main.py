@@ -33,6 +33,38 @@ except ImportError as exc:  # pragma: no cover
 PLUGIN_ID = "ojhc_link"
 PLUGIN_VERSION = "0.1.0"
 HARD_CAP_PCT = 90           # 代码硬上限（配置改不动；App 上限本身是最终边界）
+
+TUNING_DEFAULTS = {
+    "base_intensity": 74,   # App 上限的百分比（s=2 档）
+    "intensity_step": 4,    # 每升一档加多少
+    "max_s": 4,             # 最高档位
+    "cooldown_s": 90,       # 两次电击最小间隔
+    "hourly_cap": 30,       # 每小时最多几次
+    "allow_level_up": False,  # 等级上升是否也电
+    "preset": "呼吸",        # 波形预设
+}
+
+
+def normalize_tuning(cfg: dict) -> dict:
+    def num(key, lo, hi, default):
+        try:
+            value = int(round(float(cfg.get(key, default))))
+        except (TypeError, ValueError):
+            value = default
+        return max(lo, min(hi, value))
+
+    t = {
+        "base_intensity": num("base_intensity", 40, 90, TUNING_DEFAULTS["base_intensity"]),
+        "intensity_step": num("intensity_step", 0, 10, TUNING_DEFAULTS["intensity_step"]),
+        "max_s": num("max_s", 2, 5, TUNING_DEFAULTS["max_s"]),
+        "cooldown_s": num("cooldown_s", 30, 300, TUNING_DEFAULTS["cooldown_s"]),
+        "hourly_cap": num("hourly_cap", 5, 60, TUNING_DEFAULTS["hourly_cap"]),
+        "allow_level_up": bool(cfg.get("allow_level_up", TUNING_DEFAULTS["allow_level_up"])),
+        "preset": str(cfg.get("preset") or TUNING_DEFAULTS["preset"])[:32],
+    }
+    return t
+
+
 MIN_PULSE_S = 0.3
 MAX_PULSE_S = 3.0
 LEASE_MARGIN = 1.35         # 租约宽限系数（ttl*1.35 后必须归零）
@@ -82,6 +114,7 @@ class OjhPlugin:
         self.manifest = manifest
         self.cfg = schema_defaults(manifest)
         self.max_pct = int(min(int(self.cfg.get("max_intensity_pct", 90) or 90), HARD_CAP_PCT))
+        self.tuning = normalize_tuning(self.cfg)
         self.estop = False
         self.lease_id = 0
         self.lease_at = 0.0
@@ -161,6 +194,20 @@ class OjhPlugin:
                     self.device_connected = bool(msg.get("connected"))
                     self.device_type = msg.get("device_type") or ""
                     await self.push_status()
+                elif op in ("config", "config_changed"):
+                    data = msg.get("config")
+                    if not isinstance(data, dict):
+                        data = {k: v for k, v in msg.items()
+                                if k not in ("op", "schema", "type")}
+                    if isinstance(data, dict):
+                        self.cfg.update(data)
+                        self.max_pct = int(min(int(self.cfg.get("max_intensity_pct", 90) or 90),
+                                              HARD_CAP_PCT))
+                        self.tuning = normalize_tuning(self.cfg)
+                        if self.engine_writer is not None:
+                            await self._engine_send({"op": "tuning", "tuning": self.tuning})
+                        await self._dg_log(
+                            f"配置已更新：{json.dumps(self.tuning, ensure_ascii=False)}")
                 elif op == "ping":
                     await self._dg_send({"op": "pong", "t": msg.get("t")})
                 elif op == "stop":
@@ -296,6 +343,7 @@ class OjhPlugin:
         hello = {
             "op": "hello", "token": token, "plugin": PLUGIN_ID,
             "version": PLUGIN_VERSION,
+            "tuning": self.tuning,
             "device": {
                 "connected": self.device_connected, "type": self.device_type,
                 "max_a": 0, "max_b": 0,

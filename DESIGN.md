@@ -1435,6 +1435,7 @@ MVP **必须包含设备与校准**（这是核心目的），不含 AtCoder/牛
 | v0.3.8 | **P3 设备链路 M4**：`device.py`（TCP JSONL、租约续期、一次性 nonce、ack 超时、estop）；`starter/ojhc_link` 生产插件（DGHub + Engine 双连接、租约过期归零、Engine 断开归零、只用 rollback）；`run --device` 要求真实校准档案、C 级源默认禁设备；SQLite 记录 allowed；selftest 增加设备链路往返测试 |
 | v0.3.10 | **真机联调修复**：DGHub API 实际端口 8000（自动发现）；`trigger` 必须带波形 `preset`，空 preset 只会改强度不出波形（校准 50% 也无感）→ 校准默认「呼吸」并从 `/api/pulse-presets` 校验；`test-fire` 验证波形帧确实下发 |
 | v0.3.13 | 真机手感联调：DGHub 的百分比 × App 上限 = 绝对强度（实测 40 上限时 100%→40）；无校准模式映射定为 App 上限的 65%~90%（上限 40 → 绝对 30~34，落在用户已确认“有感觉”的 28~40 区间）；硬顶随之为 App 上限的 90% |
+| v0.3.15 | 插件页面可调参：插件 config_schema 暴露强度档位/波形/冷却/配额/level_up，插件通过 hello + config_changed 把参数转发 Engine（Engine 再钳一次）；Engine 侧 RunOptions 之外支持运行时 tuning，硬安全边界不变 |
 | v0.3.14 | **真机验收通过**：修复插件 45% 死钳制（改为 90%）、mock 支持带节奏回放、App 上限过低时拒绝运行；真机确认 30~34 强度可感知，端到端链路（Engine→插件→DGHub→App→设备）验收完成 |
 | v0.3.11 | 新增 `--replay-speed N`：已结束的比赛按提交时间差 N 倍速重放（不再因实时时钟超时瞬间退出）；文档示例去掉 `<id>/<handle>` 占位符（Windows CMD 会把 `<>` 当重定向） |
 | v0.3.12 | 新增 `--trust-app-limit` 无校准模式：直接读取 App 强度上限并映射（硬顶永不越界）；校准改为 10% 步进 / 1.2s 脉冲 / 最高 80% 上限；档案记录设备上限并在 `status` 显示绝对强度 |

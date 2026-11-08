@@ -19,6 +19,7 @@ from .platforms.base import (
 from .pressure import (
     PressureConfig, PressureInput, PressureState, compute, verdict_score,
 )
+from . import profile as profile_mod
 from .profile import DeviceProfile
 from .store import Store
 from .util import clamp
@@ -144,7 +145,17 @@ class SessionRunner:
 
     async def _emit(self, event: Event, out: list[tuple[Event, Decision]]) -> None:
         event.s = EVENT_S.get(event.kind, 0)
+        plugin_tuning = getattr(self.device, "tuning", None) if self.device else None
+        self.gate.set_tuning(plugin_tuning)
         decision = self.gate.evaluate(event, self.state, event.rel_s)
+        if decision.would_fire and plugin_tuning:
+            base = int(plugin_tuning.get("base_intensity", 74))
+            step = int(plugin_tuning.get("intensity_step", 4))
+            tuned = base + (max(0, decision.s_eff) - 2) * step
+            decision.intensity = int(max(0, min(round(tuned), profile_mod.HARD_CAP_PCT)))
+            if decision.intensity <= 0:
+                decision.would_fire = False
+                decision.deny = ["插件调参后强度为 0"]
 
         # 真实输出：闸门 would_fire + 本会话显式启用 + 设备链路可用
         if decision.would_fire and self.options.enable_device:
@@ -159,7 +170,9 @@ class SessionRunner:
                 event_id = f"{event.kind}-{event.rel_s:.1f}-{len(self.result.events)}"
                 ack = await self.device.fire(
                     event_id=event_id, intensity_pct=decision.intensity,
-                    duration_s=decision.duration_s, preset=self.options.device_preset,
+                    duration_s=decision.duration_s,
+                    preset=((plugin_tuning.get("preset") if plugin_tuning else "") 
+                            or self.options.device_preset),
                     channel=channel, label=f"OJHC {event.kind}")
                 if ack.get("ok"):
                     decision.allowed = True
@@ -355,6 +368,8 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
         if await device.wait_client(options.device_wait_s):
             print(f"[device] 插件就绪：device={device.status.device_type or '-'} "
                   f"connected={device.status.connected}")
+            if device.tuning:
+                print(f"[device] 插件页面调参已生效：{device.tuning}")
         else:
             print("[device] 警告：没等到插件连接，本次会话不会输出（会继续 dry-run 记录）")
 

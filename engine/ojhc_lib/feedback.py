@@ -47,6 +47,35 @@ HARD_MAX_S = HARD_CAP_PCT
 BUCKET_CAPACITY = 5
 BUCKET_REFILL_S = 180.0
 HOURLY_CAP = 30
+
+# 插件页面可调参数（Engine 端再钳一次，硬边界不可绕过）
+TUNING_DEFAULTS = {
+    "base_intensity": 74, "intensity_step": 4, "max_s": 4,
+    "cooldown_s": 90, "hourly_cap": 30, "allow_level_up": False, "preset": "呼吸",
+}
+
+
+def normalize_tuning(raw: dict | None) -> dict | None:
+    if not isinstance(raw, dict) or not raw:
+        return None
+
+    def num(key, lo, hi, default):
+        try:
+            value = int(round(float(raw.get(key, default))))
+        except (TypeError, ValueError):
+            value = default
+        return max(lo, min(hi, value))
+
+    return {
+        "base_intensity": num("base_intensity", 40, 90, 74),
+        "intensity_step": num("intensity_step", 0, 10, 4),
+        "max_s": num("max_s", 2, 5, 4),
+        "cooldown_s": num("cooldown_s", 30, 300, 90),
+        "hourly_cap": num("hourly_cap", 5, 60, 30),
+        "allow_level_up": bool(raw.get("allow_level_up", False)),
+        "preset": str(raw.get("preset") or "呼吸")[:32],
+    }
+
 NO_AC_CAP = 5
 ESCALATION_COOLDOWN_BONUS_S = 60.0
 
@@ -90,6 +119,10 @@ class Gate:
         self.preset = PRESETS[self.preset_name]
         self.dry_run = dry_run
         self.st = _GateState()
+        self.tuning: dict | None = None
+
+    def set_tuning(self, raw: dict | None) -> None:
+        self.tuning = normalize_tuning(raw)
 
     @property
     def profile_ok(self) -> bool:
@@ -117,8 +150,19 @@ class Gate:
             d.deny.append("confidence=low（数据不足）")
             return d
 
+        tuning = self.tuning
+        max_s = self.preset["max_s"]
+        cooldown_base = self.preset["cooldown_s"]
+        hourly_cap = HOURLY_CAP
+        allow_level_up = self.preset["enable_level_up"]
+        if tuning:
+            max_s = min(max_s, int(tuning["max_s"]))
+            cooldown_base = float(tuning["cooldown_s"])
+            hourly_cap = int(tuning["hourly_cap"])
+            allow_level_up = allow_level_up or bool(tuning["allow_level_up"])
+
         # 事件本身是否要输出
-        if event.kind == "level_up" and not self.preset["enable_level_up"]:
+        if event.kind == "level_up" and not allow_level_up:
             d.deny.append(f"level_up 事件在 {self.preset_name} 预设下关闭")
             return d
         if event.s <= 0:
@@ -126,7 +170,7 @@ class Gate:
             return d
 
         # 感受等级：受压力等级上限约束
-        s_eff = min(event.s, LEVEL_CAP[state.level], self.preset["max_s"])
+        s_eff = min(event.s, LEVEL_CAP[state.level], max_s)
         if s_eff <= 0:
             d.deny.append(f"level=L{state.level} 封顶 s≤{LEVEL_CAP[state.level]}")
             return d
@@ -144,7 +188,7 @@ class Gate:
 
         # 冷却与配额
         self._refill(now_s)
-        cooldown = self.preset["cooldown_s"] + (
+        cooldown = cooldown_base + (
             ESCALATION_COOLDOWN_BONUS_S if escalation_banned else 0.0)
         if now_s - self.st.last_output_s < cooldown:
             d.deny.append(f"全局冷却中（{cooldown:.0f}s）")
@@ -154,8 +198,8 @@ class Gate:
             d.deny.append(f"同类事件冷却中（{event.kind}）")
             return d
         recent_hour = [t for t in self.st.hourly if now_s - t < 3600]
-        if len(recent_hour) >= HOURLY_CAP:
-            d.deny.append("小时窗硬限 30 次")
+        if len(recent_hour) >= hourly_cap:
+            d.deny.append(f"小时窗硬限 {hourly_cap} 次")
             return d
         if self.st.tokens < 1:
             d.deny.append("令牌桶已空")

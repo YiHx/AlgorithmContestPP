@@ -520,6 +520,8 @@ def cmd_selftest(args: argparse.Namespace) -> int:
             reader, writer = await _asyncio.open_connection("127.0.0.1", link.port)
             writer.write((json.dumps({
                 "op": "hello", "token": link.token, "plugin": "fake", "version": "0",
+                "tuning": {"base_intensity": 80, "intensity_step": 5,
+                           "cooldown_s": 60, "max_s": 5, "preset": "潮汐"},
                 "device": {"connected": True, "type": "v3",
                            "max_a": 200, "max_b": 200}}) + "\n").encode())
             await writer.drain()
@@ -548,11 +550,14 @@ def cmd_selftest(args: argparse.Namespace) -> int:
         fired = await link.fire("e1", 26, 0.8, preset="", channel="both") if connected \
             else {"ok": False, "note": "plugin not connected"}
         await link.estop("selftest")
+        link_tuning = dict(link.tuning)
         await link.close()
         await task
-        return results, fired
+        return results, fired, link_tuning
 
-    device_results, fired = asyncio.run(_device_roundtrip())
+    device_results, fired, link_tuning = asyncio.run(_device_roundtrip())
+    if link_tuning.get("base_intensity") != 80 or link_tuning.get("preset") != "潮汐":
+        problems.append(f"设备链路未正确收到插件调参：{link_tuning}")
     if not fired.get("ok"):
         problems.append(f"设备链路 fire 失败：{fired}")
     elif device_results.get("output", {}).get("intensity_pct") != 26:

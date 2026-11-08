@@ -60,6 +60,7 @@ class DeviceLink:
         self.renew_s = renew_s
         self.token = secrets.token_urlsafe(12)
         self.status = DeviceStatus()
+        self.tuning: dict = {}
         self.lease_id = 0
         self.lease_sent_at = 0.0
         self._server: asyncio.AbstractServer | None = None
@@ -150,6 +151,7 @@ class DeviceLink:
                 device_type=str(device.get("type") or ""),
                 max_strength_a=int(device.get("max_a") or 0),
                 max_strength_b=int(device.get("max_b") or 0))
+            self.tuning = hello.get("tuning") if isinstance(hello.get("tuning"), dict) else {}
             self._reader, self._writer = reader, writer
             await self._send({"op": "hello_ack", "accepted": True,
                               "protocol": PROTOCOL_VERSION})
@@ -188,6 +190,10 @@ class DeviceLink:
                 fut = self._pending.pop(event_id, None)
                 if fut and not fut.done():
                     fut.set_result(msg)
+            elif op == "tuning":
+                if isinstance(msg.get("tuning"), dict):
+                    self.tuning = msg["tuning"]
+                    print(f"[device] 插件调参更新：{self.tuning}")
             elif op == "pong":
                 pass
             elif op == "error":

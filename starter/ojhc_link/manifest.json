@@ -22,8 +22,66 @@
       ]
     },
     {
-      "section": "安全",
+      "section": "强度（App 上限的百分比）",
       "fields": [
+        {
+          "key": "base_intensity",
+          "type": "percent",
+          "label": "基础强度（s=2 档）",
+          "default": 74,
+          "min": 40,
+          "max": 90,
+          "description": "输出去电强度 = 基础强度 + (档位-2)×每档递增，均为 App 上限的百分比"
+        },
+        {
+          "key": "intensity_step",
+          "type": "percent",
+          "label": "每档递增",
+          "default": 4,
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "max_s",
+          "type": "number",
+          "label": "最高档位 s（2-5）",
+          "default": 4,
+          "min": 2,
+          "max": 5
+        },
+        {
+          "key": "preset",
+          "type": "preset",
+          "label": "波形预设",
+          "default": "呼吸"
+        }
+      ]
+    },
+    {
+      "section": "频率与安全",
+      "fields": [
+        {
+          "key": "cooldown_s",
+          "type": "number",
+          "label": "两次电击最小间隔（秒）",
+          "default": 90,
+          "min": 30,
+          "max": 300
+        },
+        {
+          "key": "hourly_cap",
+          "type": "number",
+          "label": "每小时最多次数",
+          "default": 30,
+          "min": 5,
+          "max": 60
+        },
+        {
+          "key": "allow_level_up",
+          "type": "bool",
+          "label": "等级上升时也电一下",
+          "default": false
+        },
         {
           "key": "max_intensity_pct",
           "type": "percent",
