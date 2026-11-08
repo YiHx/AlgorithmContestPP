@@ -485,6 +485,7 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
         cursor = None
         last_standings: Standings | None = None
         last_standings_at = 0.0
+        first_poll = True
         while True:
             elapsed = time.time() - start
             if elapsed > limit_s:
@@ -495,6 +496,14 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
                 if f"poll error: {exc}" not in runner.degraded:
                     runner.degraded.append(f"poll error: {exc}")
                 batch = []
+            if first_poll:
+                # 第一次拉取的是"引擎启动前已有的提交"（虚拟参赛/补题历史）：
+                # 只把它当作基线游标，不触发电击，避免一启动就被历史 WA 电。
+                first_poll = False
+                if batch:
+                    cursor = batch[-1].sid
+                    print(f"[live] 已忽略启动前的历史提交 {len(batch)} 条（不触发电击）")
+                    continue
             for sub in batch:
                 # CF 虚拟参赛/赛外提交的 relativeTimeSeconds 可能是 INT_MAX：用本次真实 elapsed 代替
                 if (sub.rel_s is None or sub.rel_s < 0
@@ -508,7 +517,7 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
                 cursor = sub.sid
             for ev, dec in await runner.check_timeouts(elapsed):
                 runner.print_line(ev, dec)
-            await asyncio.sleep(5.0)
+            await asyncio.sleep(2.5)
         return runner.finalize()
     finally:
         if device_started:
