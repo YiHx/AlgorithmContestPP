@@ -58,7 +58,7 @@ OJ（Codeforces ...） → Contest Engine（压力分 + 安全闸门） → DGHu
 | 浏览器扩展（`extension/`，MV3） | ✅ 代码完成，未在真实浏览器验证 |
 | SQLite 会话历史 + 赛后复盘（`sessions` / `report`） | ✅ 已实现 |
 | 离线回放 + 闸门模拟（`ojhc run --mock`） | ✅ 已实现（打印 would-fire） |
-| 真实设备输出（`run --device` + `starter/ojhc_link`） | 🟡 M4 代码完成：租约/死手开关/急停/归零已实现；**真机未验证** |
+| 真实设备输出（`run --device` + `starter/ojhc_link`） | ✅ **真机验证通过（2026-11-08）**：引擎→插件→DGHub→App→设备，30~34 强度可感知；租约/急停/归零生效 |
 | Linux / macOS | ⛔ 不支持（DGHub 主程序是 Windows 应用） |
 
 > 诚实说明：**目前没有任何一次真实设备验证**。代码按 DGHub 协议文档实现，正在等真机校准。
