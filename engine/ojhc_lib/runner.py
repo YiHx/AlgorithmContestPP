@@ -363,6 +363,8 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
                            source_level=source_level)
     try:
         if replay:
+            if options.replay_speed and options.replay_speed > 0:
+                return await _replay_paced(adapter, runner, options)
             cursor: str | None = None
             while True:
                 batch = await adapter.poll(cursor)
