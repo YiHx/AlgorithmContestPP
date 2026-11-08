@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS events (
     intensity INTEGER NOT NULL,
     duration_s REAL NOT NULL,
     would_fire INTEGER NOT NULL,
+    allowed INTEGER DEFAULT 0,
     deny TEXT
 );
 CREATE TABLE IF NOT EXISTS pressure (
@@ -86,6 +87,10 @@ class Store:
         self.conn = sqlite3.connect(str(self.path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        # 兼容旧库：补 allowed 列
+        cols = {row[1] for row in self.conn.execute("PRAGMA table_info(events)")}
+        if "allowed" not in cols:
+            self.conn.execute("ALTER TABLE events ADD COLUMN allowed INTEGER DEFAULT 0")
         self.conn.commit()
 
     def close(self) -> None:
@@ -139,12 +144,13 @@ class Store:
             (session_id, st.rel_s, st.rank, st.solved, st.n_official, int(st.frozen)))
 
     def add_event(self, session_id: int, rel_s: float, kind: str, s: int,
-                  intensity: int, duration_s: float, would_fire: bool, deny: list[str]) -> None:
+                  intensity: int, duration_s: float, would_fire: bool,
+                  deny: list[str], allowed: bool = False) -> None:
         self.conn.execute(
-            "INSERT INTO events(session_id, rel_s, kind, s, intensity, duration_s, would_fire, deny)"
-            " VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO events(session_id, rel_s, kind, s, intensity, duration_s,"
+            " would_fire, allowed, deny) VALUES(?,?,?,?,?,?,?,?,?)",
             (session_id, rel_s, kind, s, intensity, duration_s, int(would_fire),
-             json.dumps(deny, ensure_ascii=False)))
+             int(allowed), json.dumps(deny, ensure_ascii=False)))
 
     def add_pressure(self, session_id: int, rel_s: float, p: float, level: int,
                      confidence: str) -> None:
@@ -164,8 +170,8 @@ class Store:
             "SELECT sid, rel_s, verdict, problem FROM submissions WHERE session_id=?"
             " ORDER BY rel_s", (session_id,))]
         events = [dict(r) for r in self.conn.execute(
-            "SELECT rel_s, kind, s, intensity, duration_s, would_fire, deny FROM events"
-            " WHERE session_id=? ORDER BY rel_s", (session_id,))]
+            "SELECT rel_s, kind, s, intensity, duration_s, would_fire, allowed, deny"
+            " FROM events WHERE session_id=? ORDER BY rel_s", (session_id,))]
         curve = [dict(r) for r in self.conn.execute(
             "SELECT rel_s, p, level FROM pressure WHERE session_id=?"
             " ORDER BY rel_s", (session_id,))]

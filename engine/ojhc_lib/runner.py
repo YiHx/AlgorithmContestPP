@@ -60,6 +60,10 @@ class RunOptions:
     speed: float = 0.0            # 0 = 立即回放；>0 = 每模拟秒等待 1/speed 秒
     dry_run: bool = True
     quiet: bool = False
+    enable_device: bool = False       # --device：本会话允许真实输出
+    device_preset: str = ""           # DGHub 波形预设名（空=只改强度）
+    allow_device_on_c: bool = False   # C 级数据源是否允许驱动设备（默认否）
+    device_wait_s: float = 20.0       # 等待插件连接的时间
 
 
 @dataclass
@@ -74,9 +78,13 @@ class RunResult:
 class SessionRunner:
     def __init__(self, meta: ContestMeta, profile: DeviceProfile | None,
                  options: RunOptions, pressure_config: PressureConfig | None = None,
-                 store: Store | None = None, session_id: int | None = None) -> None:
+                 store: Store | None = None, session_id: int | None = None,
+                 device=None, source_level: str = "A") -> None:
         self.meta = meta
+        self.profile = profile
         self.options = options
+        self.device = device
+        self.source_level = source_level
         self.cfg = pressure_config or PressureConfig()
         self.gate = Gate(profile, options.preset, options.dry_run)
         self.e_total = expected_solves(meta.problems, options.rating)
@@ -97,7 +105,8 @@ class SessionRunner:
         self._last_snapshot_rel: float | None = None
 
     # -------------------------------------------------- 核心：一次提交
-    def on_submission(self, sub: Submission, standings: Standings) -> list[tuple[Event, Decision]]:
+    async def on_submission(self, sub: Submission,
+                            standings: Standings) -> list[tuple[Event, Decision]]:
         out: list[tuple[Event, Decision]] = []
         kind = VERDICT_KIND.get(sub.verdict)
         if kind is None:            # TESTING / UNKNOWN：不产生事件（宁可漏报不误报）
@@ -125,23 +134,47 @@ class SessionRunner:
         prev_level = self.state.level
         self.state = self._pressure(elapsed, standings)
         if self.state.level > prev_level:
-            self._emit(Event("level_up", elapsed, f"L{self.state.level}"), out)
+            await self._emit(Event("level_up", elapsed, f"L{self.state.level}"), out)
 
         event = Event(kind=kind, rel_s=elapsed,
                       detail=f"题 {sub.problem}" + (" AC" if kind == "verdict.ac" else f" {sub.verdict}"))
-        self._emit(event, out)
+        await self._emit(event, out)
         return out
 
-    def _emit(self, event: Event, out: list[tuple[Event, Decision]]) -> None:
+    async def _emit(self, event: Event, out: list[tuple[Event, Decision]]) -> None:
         event.s = EVENT_S.get(event.kind, 0)
         decision = self.gate.evaluate(event, self.state, event.rel_s)
+
+        # 真实输出：闸门 would_fire + 本会话显式启用 + 设备链路可用
+        if decision.would_fire and self.options.enable_device:
+            if self.source_level == "C" and not self.options.allow_device_on_c:
+                decision.would_fire = False
+                decision.deny = ["C 级数据源默认禁设备（需 allow_device_on_dom_source）"]
+            elif self.device is None or not self.device.connected:
+                decision.would_fire = False
+                decision.deny = ["设备插件未连接"]
+            else:
+                channel = (self.profile.channel if self.profile else "") or "both"
+                event_id = f"{event.kind}-{event.rel_s:.1f}-{len(self.result.events)}"
+                ack = await self.device.fire(
+                    event_id=event_id, intensity_pct=decision.intensity,
+                    duration_s=decision.duration_s, preset=self.options.device_preset,
+                    channel=channel, label=f"OJHC {event.kind}")
+                if ack.get("ok"):
+                    decision.allowed = True
+                    decision.deny = []
+                else:
+                    decision.would_fire = False
+                    decision.deny = [f"设备拒绝：{ack.get('note')}"]
+
         out.append((event, decision))
         self.result.events.append(event)
         self.result.decisions.append(decision)
         if self.store and self.session_id is not None:
             self.store.add_event(self.session_id, event.rel_s, event.kind, event.s,
                                  decision.intensity, decision.duration_s,
-                                 decision.would_fire, list(decision.deny))
+                                 decision.would_fire, list(decision.deny),
+                                 allowed=decision.allowed)
 
     def _pressure(self, elapsed: float, standings: Standings) -> PressureState:
         frozen = standings.frozen or (
@@ -163,16 +196,16 @@ class SessionRunner:
         return self.state
 
     # -------------------------------------------------- 时间型事件
-    def check_timeouts(self, elapsed: float) -> list[tuple[Event, Decision]]:
+    async def check_timeouts(self, elapsed: float) -> list[tuple[Event, Decision]]:
         out: list[tuple[Event, Decision]] = []
         if self.no_submit_armed and elapsed - self.last_sub_s > self.options.no_submit_minutes * 60:
             self.no_submit_armed = False
-            self._emit(Event("timeout_no_submit", elapsed,
-                             f"距上次提交 {fmt_time(elapsed - self.last_sub_s)}"), out)
+            await self._emit(Event("timeout_no_submit", elapsed,
+                                   f"距上次提交 {fmt_time(elapsed - self.last_sub_s)}"), out)
         if self.no_ac_armed and elapsed - self.last_ac_s > self.no_ac_s:
             self.no_ac_armed = False
-            self._emit(Event("timeout_no_ac", elapsed,
-                             f"距上次 AC {fmt_time(elapsed - self.last_ac_s)}"), out)
+            await self._emit(Event("timeout_no_ac", elapsed,
+                                   f"距上次 AC {fmt_time(elapsed - self.last_ac_s)}"), out)
         return out
 
     # -------------------------------------------------- 榜单
@@ -228,6 +261,7 @@ class SessionRunner:
             "duration_s": self.meta.duration_s,
             "submissions_events": counts,
             "would_fire": len(fired),
+            "allowed": len([d for d in self.result.decisions if d.allowed]),
             "would_fire_by_kind": _count([e.kind for e, d in zip(self.result.events, self.result.decisions)
                                           if d.would_fire]),
             "denied_top": dict(sorted(denied.items(), key=lambda kv: -kv[1])[:5]),
@@ -238,6 +272,7 @@ class SessionRunner:
             "solved": len(self.solved),
             "e_total": round(self.e_total, 2),
             "degraded": list(self.degraded),
+            "device_enabled": bool(self.options.enable_device),
         }
         if self.store and self.session_id is not None:
             self.store.finish_session(self.session_id, self.result.summary)
@@ -262,53 +297,81 @@ def _open_session(adapter_meta: ContestMeta, options: RunOptions,
 
 async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
                       options: RunOptions, store: Store | None = None,
-                      replay: bool = False) -> RunResult:
-    """统一入口：replay=True 时按夹具时间线瞬时回放，否则实时轮询。"""
+                      replay: bool = False, device=None) -> RunResult:
+    """统一入口：replay=True 时按夹具时间线瞬时回放，否则实时轮询。
+
+    device 不为空且 options.enable_device 时：启动设备链路 → 等插件 → 输出真实脉冲；
+    会话结束/异常时强制 estop + 关闭链路（设计 §7.6）。
+    """
     meta = await adapter.load_meta()
+    source_level = getattr(getattr(adapter, "capabilities", None), "source_level", "A")
     session_id = _open_session(meta, options, store)
-    runner = SessionRunner(meta, profile, options, store=store, session_id=session_id)
-    if replay:
-        cursor: str | None = None
+
+    device_started = False
+    if device is not None and options.enable_device:
+        url = await device.start()
+        link_file = device.save_link_file()
+        device_started = True
+        print(f"[device] 设备链路已启动：{url}（token 已写入 {link_file}）")
+        print("[device] 下一步：在 DGHub 里启用 OJHC 硬核模式插件（starter/ojhc_link）")
+        if await device.wait_client(options.device_wait_s):
+            print(f"[device] 插件就绪：device={device.status.device_type or '-'} "
+                  f"connected={device.status.connected}")
+        else:
+            print("[device] 警告：没等到插件连接，本次会话不会输出（会继续 dry-run 记录）")
+
+    runner = SessionRunner(meta, profile, options, store=store, session_id=session_id,
+                           device=device if device_started else None,
+                           source_level=source_level)
+    try:
+        if replay:
+            cursor: str | None = None
+            while True:
+                batch = await adapter.poll(cursor)
+                if not batch:
+                    break
+                for sub in batch:
+                    standings = await runner._standings(adapter, sub.rel_s)
+                    for ev, dec in await runner.on_submission(sub, standings):
+                        runner.print_line(ev, dec)
+                    for ev, dec in await runner.check_timeouts(sub.rel_s):
+                        runner.print_line(ev, dec)
+                    cursor = sub.sid
+                if options.speed > 0:
+                    await asyncio.sleep(min(2.0, 1.0 / options.speed))
+            for ev, dec in await runner.check_timeouts(meta.duration_s):
+                runner.print_line(ev, dec)
+            return runner.finalize()
+
+        start = meta.start_ts or time.time()
+        limit_s = meta.duration_s if options.max_run_s is None else min(meta.duration_s, options.max_run_s)
+        cursor = None
+        last_standings: Standings | None = None
+        last_standings_at = 0.0
         while True:
-            batch = await adapter.poll(cursor)
-            if not batch:
+            elapsed = time.time() - start
+            if elapsed > limit_s:
                 break
+            try:
+                batch = await adapter.poll(cursor)
+            except Exception as exc:  # noqa: BLE001
+                if f"poll error: {exc}" not in runner.degraded:
+                    runner.degraded.append(f"poll error: {exc}")
+                batch = []
             for sub in batch:
-                standings = await runner._standings(adapter, sub.rel_s)
-                for ev, dec in runner.on_submission(sub, standings):
-                    runner.print_line(ev, dec)
-                for ev, dec in runner.check_timeouts(sub.rel_s):
+                if last_standings is None or time.time() - last_standings_at > 45:
+                    last_standings = await runner._standings(adapter, sub.rel_s)
+                    last_standings_at = time.time()
+                for ev, dec in await runner.on_submission(sub, last_standings):
                     runner.print_line(ev, dec)
                 cursor = sub.sid
-            if options.speed > 0:
-                await asyncio.sleep(min(2.0, 1.0 / options.speed))
-        for ev, dec in runner.check_timeouts(meta.duration_s):
-            runner.print_line(ev, dec)
-        return runner.finalize()
-
-    start = meta.start_ts or time.time()
-    limit_s = meta.duration_s if options.max_run_s is None else min(meta.duration_s, options.max_run_s)
-    cursor = None
-    last_standings: Standings | None = None
-    last_standings_at = 0.0
-    while True:
-        elapsed = time.time() - start
-        if elapsed > limit_s:
-            break
-        try:
-            batch = await adapter.poll(cursor)
-        except Exception as exc:  # noqa: BLE001
-            if f"poll error: {exc}" not in runner.degraded:
-                runner.degraded.append(f"poll error: {exc}")
-            batch = []
-        for sub in batch:
-            if last_standings is None or time.time() - last_standings_at > 45:
-                last_standings = await runner._standings(adapter, sub.rel_s)
-                last_standings_at = time.time()
-            for ev, dec in runner.on_submission(sub, last_standings):
+            for ev, dec in await runner.check_timeouts(elapsed):
                 runner.print_line(ev, dec)
-            cursor = sub.sid
-        for ev, dec in runner.check_timeouts(elapsed):
-            runner.print_line(ev, dec)
-        await asyncio.sleep(5.0)
-    return runner.finalize()
+            await asyncio.sleep(5.0)
+        return runner.finalize()
+    finally:
+        if device_started:
+            await device.estop("session end")
+            await device.close()
+            device.remove_link_file()
+            print("[device] 会话结束：已急停并关闭设备链路")

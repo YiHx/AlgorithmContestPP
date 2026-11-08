@@ -33,9 +33,33 @@ python ojhC.py run --url https://ac.nowcoder.com/acm/contest/12345 --handle <han
 python ojhC.py sessions               # 历史会话列表
 python ojhC.py report --session 3     # 事件时间线 + 压力曲线 + 降级信息
 
+# 真实设备输出（M4，需真机校准档案 + DGHub 里启用 OJHC 硬核模式插件）
+python ojhC.py run --url https://codeforces.com/contest/1847 --handle <handle> --device
+python ojhC.py run --mock --device --max-run-min 1     # 演示档案会被拒绝（安全）
+
 # 自检
-python ojhC.py selftest               # 不联网，覆盖压力/闸门/回放/存储/桥接
+python ojhC.py selftest               # 不联网，覆盖压力/闸门/回放/存储/桥接/设备链路
 ```
+
+## 设备输出链路（M4）
+
+```
+Engine（--device）
+  ├─ 127.0.0.1:8768 TCP JSONL 服务；写 ~/.ojhc/device_link.json {host,port,token}
+  └─ 闸门通过 → fire(lease_id, nonce, intensity, duration) → 等 ack
+        ▲
+        │ lease 每 2s 续期（ttl 5s）；estop 立即归零
+        ▼
+starter/ojhc_link（DGHub 插件）
+  ├─ 校验 lease/nonce/强度/时长/设备在线
+  ├─ DGHub trigger（rollback，绝不用 permanent）
+  └─ 租约过期 1.35× / Engine 断开 / DGHub stop / 自身退出 → set_strength 0
+```
+
+安全要点：
+- `--device` 必须配合**真实校准档案**（演示档案直接拒绝）；
+- C 级数据源（AtCoder/洛谷/牛客扩展）默认禁设备，需要 `--allow-device-on-dom-source`（不建议）；
+- 会话结束/异常强制 estop；审计日志记录 `would_fire` 与 `allowed` 两列。
 
 ## 浏览器桥接（AtCoder / 洛谷 / 牛客）
 

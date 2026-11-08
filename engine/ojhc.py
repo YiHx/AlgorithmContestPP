@@ -32,6 +32,7 @@ from ojhc_lib import calibrate as calibrate_mod  # noqa: E402
 from ojhc_lib import doctor as doctor_mod  # noqa: E402
 from ojhc_lib import feedback as feedback_mod  # noqa: E402
 from ojhc_lib import bridge as bridge_mod  # noqa: E402
+from ojhc_lib import device as device_mod  # noqa: E402
 from ojhc_lib import platforms as platforms_mod  # noqa: E402
 from ojhc_lib import pressure as pressure_mod  # noqa: E402
 from ojhc_lib import profile as profile_mod  # noqa: E402
@@ -151,12 +152,31 @@ def _wait_for_extension(hub, timeout_s: float) -> bool:
 
 def cmd_run(args: argparse.Namespace) -> int:
     prof, profile_source = _resolve_profile(args)
+
+    # 真实输出：必须已有真机校准档案（演示档案绝不允许驱动硬件）
+    device_link = None
+    enable_device = bool(args.device)
+    if enable_device:
+        if profile_source != "real":
+            print(fail("--device 需要真实的校准档案（当前是演示档案）"))
+            print(info("先跑 `python ojhC.py calibrate` 完成真机校准，再带 --device"))
+            return 2
+        device_link = device_mod.DeviceLink(port=args.device_port)
+        print(warn("⚠ 真实输出已启用：本会话通过闸门的失败事件会真的打到设备上"))
+        print(info(f"安全边界：强度 ≤{feedback_mod.HARD_MAX_S}% / 脉冲 ≤3s / 冷却与令牌桶生效 / "
+                   "Ctrl+C 或会话结束立即急停"))
+
     opts = runner_mod.RunOptions(
         handle=args.handle or "", rating=args.rating, preset=args.preset,
         target_percentile=args.percentile, speed=args.speed,
         no_submit_minutes=args.no_submit_minutes,
-        no_ac_minutes=args.no_ac_minutes, dry_run=True,
-        max_run_s=(args.max_run_min * 60 if args.max_run_min else None))
+        no_ac_minutes=args.no_ac_minutes, dry_run=not enable_device,
+        max_run_s=(args.max_run_min * 60 if args.max_run_min else None),
+        enable_device=enable_device,
+        device_preset=(args.device_preset if args.device_preset is not None
+                       else (prof.preset or "")),
+        allow_device_on_c=args.allow_device_on_dom_source,
+        device_wait_s=args.device_wait)
 
     hub = None
     replay = False
@@ -212,7 +232,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     st = None if args.no_store else store_mod.Store(args.db)
     try:
         result = asyncio.run(runner_mod.run_adapter(
-            adapter, prof, opts, store=st, replay=replay))
+            adapter, prof, opts, store=st, replay=replay, device=device_link))
     finally:
         if st is not None:
             st.close()
@@ -235,6 +255,10 @@ def _print_summary(result: "runner_mod.RunResult") -> None:
     print(f"  档案        : {'演示档案（未校准）' if s.get('profile') == 'demo' else '真实校准档案'}")
     print(f"  事件统计    : {s['submissions_events']}")
     print(f"  若启用设备  : {s['would_fire']} 次 {s['would_fire_by_kind']}")
+    if s.get("device_enabled"):
+        print(f"  设备输出    : 实际输出 {s.get('allowed', 0)} 次（--device 已启用）")
+    else:
+        print(f"  设备输出    : 0 次（dry-run；加 --device 且完成真机校准后才输出）")
     print(f"  拒绝原因 top: {s['denied_top']}")
     print(f"  压力分      : min {s['pressure_min']} / max {s['pressure_max']} / "
           f"结束 {s['pressure_end']}（L{s['level_end']}）")
@@ -290,8 +314,13 @@ def cmd_report(args: argparse.Namespace) -> int:
     print("\n事件时间线：")
     for e in rep["events"]:
         t = f"{int(e['rel_s']) // 60:02d}:{int(e['rel_s']) % 60:02d}"
-        flag = "⚡" if e["would_fire"] else "✗"
-        deny = (" " + ",".join(e["deny"])) if e["deny"] else ""
+        if e.get("allowed"):
+            flag = "⚡ALLOWED"
+        elif e["would_fire"]:
+            flag = "⚡would-fire"
+        else:
+            flag = "✗"
+        deny = (" " + ",".join(e["deny"])) if e["deny"] and not e.get("allowed") else ""
         print(f"  [{t}] {e['kind']:<18} s={e['s']} → {e['intensity']:2d}%/"
               f"{e['duration_s']:.1f}s {flag}{deny}")
     if rep["pressure"]:
@@ -434,6 +463,61 @@ def cmd_selftest(args: argparse.Namespace) -> int:
         problems.append("L0 不应输出")
     print(f"  闸门 OK: L1→{dec.intensity}%/{dec.duration_s}s，L0 拒绝")
 
+    # 8b) 设备链路（租约 + 一次性 nonce + ack + 急停），假插件走本地 TCP
+    from ojhc_lib import device as _device
+    import asyncio as _asyncio
+
+    async def _device_roundtrip():
+        link = _device.DeviceLink(port=0)
+        await link.start()
+        results: dict = {}
+
+        async def fake_plugin():
+            reader, writer = await _asyncio.open_connection("127.0.0.1", link.port)
+            writer.write((json.dumps({
+                "op": "hello", "token": link.token, "plugin": "fake", "version": "0",
+                "device": {"connected": True, "type": "v3",
+                           "max_a": 200, "max_b": 200}}) + "\n").encode())
+            await writer.drain()
+            results["hello_ack"] = json.loads(await reader.readline())
+            results["lease"] = json.loads(await reader.readline())
+            results["output"] = json.loads(await reader.readline())
+            msg = results["output"]
+            ok = (msg.get("lease_id") == results["lease"].get("lease_id")
+                  and bool(msg.get("nonce")))
+            writer.write((json.dumps({"op": "ack", "event_id": msg.get("event_id"),
+                                      "ok": bool(ok),
+                                      "applied_pct": msg.get("intensity_pct")}) + "\n").encode())
+            await writer.drain()
+            while True:
+                line = await reader.readline()
+                if not line:
+                    break
+                m = json.loads(line)
+                if m.get("op") == "estop":
+                    results["estop"] = True
+                    break
+            writer.close()
+
+        task = _asyncio.create_task(fake_plugin())
+        connected = await link.wait_client(3.0)
+        fired = await link.fire("e1", 26, 0.8, preset="", channel="both") if connected \
+            else {"ok": False, "note": "plugin not connected"}
+        await link.estop("selftest")
+        await link.close()
+        await task
+        return results, fired
+
+    device_results, fired = asyncio.run(_device_roundtrip())
+    if not fired.get("ok"):
+        problems.append(f"设备链路 fire 失败：{fired}")
+    elif device_results.get("output", {}).get("intensity_pct") != 26:
+        problems.append(f"设备链路输出强度异常：{device_results.get('output')}")
+    elif not device_results.get("estop"):
+        problems.append("设备链路未收到 estop")
+    else:
+        print("  设备链路 OK（hello/lease/nonce/ack/estop）")
+
     # 9) 离线回放（多平台架构下）
     if DEFAULT_FIXTURE.exists():
         timeline = platforms_mod.load_mock(DEFAULT_FIXTURE)
@@ -525,6 +609,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--no-ac-minutes", type=float, default=None)
     p_run.add_argument("--db", default=None, help="SQLite 路径（默认 ~/.ojhc/ojhc.db）")
     p_run.add_argument("--no-store", action="store_true", help="不写历史")
+    p_run.add_argument("--device", action="store_true",
+                       help="启用真实设备输出（必须已有真机校准档案）")
+    p_run.add_argument("--device-port", type=int, default=8768,
+                       help="设备链路 TCP 端口（默认 8768）")
+    p_run.add_argument("--device-preset", default=None,
+                       help="DGHub 波形预设名（默认用档案里的；空=只改强度）")
+    p_run.add_argument("--allow-device-on-dom-source", action="store_true",
+                       help="允许 C 级数据源（AtCoder/洛谷/牛客扩展）驱动设备，默认禁止")
+    p_run.add_argument("--device-wait", type=float, default=20.0,
+                       help="等待设备插件连接的最长秒数（默认 20）")
     p_run.add_argument("--bridge", action="store_true",
                        help="强制走浏览器桥接（AtCoder/洛谷/牛客默认就是桥接）")
     p_run.add_argument("--bridge-port", type=int, default=8765,

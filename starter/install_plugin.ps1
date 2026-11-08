@@ -1,24 +1,34 @@
-# 纯 CLI 安装：把 ojhc_probe 目录直接拷进 DGHub 的 plugins/ 目录
+# 纯 CLI 安装：把插件目录拷进 DGHub 的 plugins/ 目录
 #
 # 用法：
-#   .\install_plugin.ps1                          # 自动探测 DGHub 安装位置
+#   .\install_plugin.ps1                          # 安装 starter/ 下全部插件（probe + link）
+#   .\install_plugin.ps1 -Plugin ojhc_link        # 只装生产插件
 #   .\install_plugin.ps1 -PluginsDir "C:\...\DGHub\plugins"
 #   .\install_plugin.ps1 -DryRun                  # 只打印探测结果，不复制
-#
-# 说明：协议文档写明「把插件目录放进 plugins/ 后重启 DGHub，即可在插件中心看到」，
-#       所以 zip 导入是可选的；本脚本就是给习惯终端的人用的。
 param(
+    [string]$Plugin = "all",
     [string]$PluginsDir,
     [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$src  = Join-Path $here "ojhc_probe"
 
-if (-not (Test-Path (Join-Path $src "manifest.json"))) {
-    throw "找不到 $src\manifest.json"
+function Get-PluginNames {
+    if ($Plugin -ne "all") { return @($Plugin) }
+    return @(Get-ChildItem -Path $here -Directory |
+        Where-Object { Test-Path (Join-Path $_.FullName "manifest.json") } |
+        ForEach-Object { $_.Name })
 }
+
+$names = Get-PluginNames
+if ($names.Count -eq 0) { throw "starter/ 下没有找到任何插件目录（需要 manifest.json）" }
+foreach ($name in $names) {
+    if (-not (Test-Path (Join-Path $here "$name\manifest.json"))) {
+        throw "找不到 $here\$name\manifest.json"
+    }
+}
+Write-Host "待安装插件: $($names -join ', ')"
 
 function Get-Candidates {
     $c = [System.Collections.Generic.List[string]]::new()
@@ -59,7 +69,7 @@ function Get-Candidates {
         }
     }
 
-    # 去重：Windows 路径大小写不敏感，DGHub / dghub 会重复出现
+    # 去重：Windows 路径大小写不敏感
     $seen = @{}
     $unique = foreach ($p in $c) {
         $key = $p.ToLowerInvariant()
@@ -94,18 +104,22 @@ if ($DryRun -or -not (Test-Path $PluginsDir)) {
     exit 0
 }
 
-$target = Join-Path $PluginsDir "ojhc_probe"
-if (Test-Path $target) {
-    $backup = "$target.bak-" + (Get-Date -Format "yyyyMMdd-HHmmss")
-    Write-Host "已存在旧版本，备份到: $backup"
-    Move-Item $target $backup
+foreach ($name in $names) {
+    $src = Join-Path $here $name
+    $target = Join-Path $PluginsDir $name
+    if (Test-Path $target) {
+        $backup = "$target.bak-" + (Get-Date -Format "yyyyMMdd-HHmmss")
+        Write-Host "已存在旧版本 $name，备份到: $backup"
+        Move-Item $target $backup
+    }
+    New-Item -ItemType Directory -Path $target -Force | Out-Null
+    Get-ChildItem -Path $src -Force | Where-Object {
+        $_.Name -notin @("__pycache__") -and $_.Extension -ne ".pyc"
+    } | ForEach-Object {
+        Copy-Item $_.FullName -Destination $target -Recurse -Force
+    }
+    Write-Host "已安装 $name -> $target" -ForegroundColor Green
 }
 
-Get-ChildItem -Path $src -Force | Where-Object {
-    $_.Name -notin @("__pycache__") -and $_.Extension -ne ".pyc"
-} | ForEach-Object {
-    Copy-Item $_.FullName -Destination (New-Item -ItemType Directory -Path $target -Force) -Recurse -Force
-}
-
-Write-Host "已安装到: $target" -ForegroundColor Green
-Write-Host "下一步：重启 DGHub -> 插件中心 -> 外部插件，应出现「OJHC 冒烟探针」"
+Write-Host "下一步：重启 DGHub -> 插件中心 -> 外部插件，应看到对应插件"
+Write-Host "生产使用请启用「OJHC 硬核模式」（ojhc_link）；冒烟测试用「OJHC 冒烟探针」（ojhc_probe）"

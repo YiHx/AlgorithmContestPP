@@ -131,3 +131,29 @@ CLI 参数会**覆盖**插件配置：`--armed / --intensity / --duration / --pr
 4. 再把 CF 适配器的真实 WA/AC 事件接进来。
 
 协议字段和消息样例见 `DESIGN.md` §9.0 与上面的官方文档链接。
+
+---
+
+## 生产插件：`ojhc_link`（M4，真实输出用）
+
+`ojhc_probe` 只是冒烟测试；**真正要电的时候用 `ojhc_link`**：
+
+```powershell
+# 安装两个插件（probe + link）
+.\install_plugin.ps1
+# 或只装生产插件
+.\install_plugin.ps1 -Plugin ojhc_link
+```
+
+然后：
+
+1. 重启 DGHub → 插件中心启用「OJHC 硬核模式」；
+2. 引擎侧带 `--device` 跑比赛（必须已有真实校准档案）：
+   ```powershell
+   cd ..\engine
+   python ojhC.py run --url <比赛URL> --handle <handle> --device
+   ```
+3. 引擎会写 `~/.ojhc/device_link.json` 并打印 TCP 端口；插件自动发现并连上；
+4. 会话结束/异常/Ctrl+C 都会**急停归零**；拔 DGHub、关插件、杀引擎同样归零。
+
+安全语义：插件只认 `lease`（2s 续期，5s 过期）+ 一次性 `nonce` 的 `output` 指令；租约过期 1.35× 立即归零；绝不用 `permanent`。

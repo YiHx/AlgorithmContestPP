@@ -2,7 +2,7 @@
 
 > 一个把「算法竞赛实时表现」翻译成「可感知反馈」的训练引擎：监听提交判题与实时榜单，计算竞赛压力分，按规则决定是否反馈、反馈多强。
 >
-> 版本：v0.3.7（草案）　写作时间：2026-11-08　状态：**P1 多平台层 + P2 浏览器桥接完成；设备链路 M4 进行中**
+> 版本：v0.3.8（草案）　写作时间：2026-11-08　状态：**P1/P2/P3 代码完成；五平台 + 设备链路（真机待验收）**
 
 ---
 
@@ -891,6 +891,8 @@ pause_after      = 180s    # 超过 -> 面板警告，暂停计时器
 | DGHub 无响应 > 3s | 停设备 |
 
 **死手开关（dead-man switch）**：Engine 维护一个**输出许可（lease）**——每 2s 续期、有效期 5s、带自增 `lease_id`。插件每次请求输出必须携带当前 `lease_id` + 一次性 `nonce`（用过即作废）。Engine 挂掉 → lease 过期 → 插件 5s 内停止并清空队列。**默认失效，而不是默认继续。**
+
+**M4 实现（`engine/ojhc_lib/device.py` + `starter/ojhc_link`）**：Engine 在 127.0.0.1 起 TCP JSONL 服务（默认 8768），把 `{host,port,token}` 写进 `~/.ojhc/device_link.json`；插件读到后连上来，之后只认三类消息：`lease`（续期）、`output`（一次脉冲，含 nonce）、`estop`。插件侧再钳一次强度/时长；租约超过 1.35×ttl 立即 `set_strength 0` 归零；Engine 断开 / DGHub stop / 插件退出都会归零。Engine 侧：真实输出要求 `--device` + **真实校准档案**（演示档案直接拒绝），会话结束强制 estop，审计日志区分 `would_fire` 与 `allowed`。
 （DGHub 官方协议没有这个机制，lease 由 Engine↔插件这条自有链路实现，见 §9.0 / §9.2。）
 
 **脉冲约束**：单次输出最长 3s，之后必须重新申请；不允许"一次申请发 60s"。
@@ -1430,6 +1432,7 @@ MVP **必须包含设备与校准**（这是核心目的），不含 AtCoder/牛
 | v0.3.5 | 仓库初始化与许可落地：采用远端初始提交的 **MIT LICENSE**；README 与 §9.0 / §13.2 的许可说明同步为 MIT（本项目不 import/vendor AGPL 的 SDK 代码）；建立 3 个功能提交并推送到 GitHub |
 | v0.3.6 | **P1 多平台架构**：新增 `platforms/`（base 抽象、CF、VJudge、mock），引擎不再依赖具体 OJ；URL 识别五平台；VJudge 判题可用（榜单接口待核实→降级）；新增 SQLite 会话存储与 `sessions` / `report` 命令；selftest 增加判题归一化、URL 识别、回放、存储往返四项 |
 | v0.3.7 | **P2 浏览器桥接**：`bridge.py`（本地 HTTP + token，C 级数据源）+ `extension/`（MV3：AtCoder/洛谷/牛客 collectors、自动发现 Engine）；VJudge 榜单改按 `/contest/rank/single` 自算（无 rank 字段、4/6 元组两种赛制、封榜启发式）；判题归一化支持中文 statusMessage；research v2（平台端点实测）归档 |
+| v0.3.8 | **P3 设备链路 M4**：`device.py`（TCP JSONL、租约续期、一次性 nonce、ack 超时、estop）；`starter/ojhc_link` 生产插件（DGHub + Engine 双连接、租约过期归零、Engine 断开归零、只用 rollback）；`run --device` 要求真实校准档案、C 级源默认禁设备；SQLite 记录 allowed；selftest 增加设备链路往返测试 |
 
 ---
 

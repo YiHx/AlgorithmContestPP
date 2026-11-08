@@ -1,0 +1,45 @@
+{
+  "id": "ojhc_link",
+  "name": "OJHC 硬核模式",
+  "version": "0.1.0",
+  "sdk": "1",
+  "author": "xuanh08",
+  "description": "OJ Hardcore Engine 的设备执行端：只接受 Engine 的租约化输出指令，租约过期/断开立即归零。",
+  "entry": "main.py",
+  "capabilities": {
+    "startup_check": true
+  },
+  "config_schema": [
+    {
+      "section": "连接",
+      "fields": [
+        {
+          "key": "link_file",
+          "type": "text",
+          "label": "Engine 链路文件（留空自动找 ~/.ojhc/device_link.json）",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "section": "安全",
+      "fields": [
+        {
+          "key": "max_intensity_pct",
+          "type": "percent",
+          "label": "本插件硬上限（代码上限 60）",
+          "default": 45,
+          "min": 0,
+          "max": 60,
+          "description": "即使 Engine 请求更高，也不会超过这个值和代码里的 60%"
+        },
+        {
+          "key": "show_status",
+          "type": "bool",
+          "label": "在 DGHub 显示运行状态",
+          "default": true
+        }
+      ]
+    }
+  ]
+}
