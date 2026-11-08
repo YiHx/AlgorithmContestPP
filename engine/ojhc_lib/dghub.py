@@ -216,3 +216,18 @@ def resolve_connection(host: str, port: int | None, token: str | None) -> tuple[
         return port, token
     found = discover(host, [port] if port else None)
     return found
+
+def fetch_device_info(host: str = "127.0.0.1", port: int | None = None) -> dict:
+    """通过 DGHub HTTP API 读取设备状态（强度上限等），失败返回空 dict。"""
+    import json as _json
+    import urllib.request
+    try:
+        found = discover(host, [port] if port else None)
+        if not found:
+            return {}
+        api_port, _token = found
+        with urllib.request.urlopen(f"http://{host}:{api_port}/api/status", timeout=3) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}

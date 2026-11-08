@@ -33,6 +33,11 @@ from ojhc_lib import doctor as doctor_mod  # noqa: E402
 from ojhc_lib import feedback as feedback_mod  # noqa: E402
 from ojhc_lib import bridge as bridge_mod  # noqa: E402
 from ojhc_lib import device as device_mod  # noqa: E402
+
+
+def device_mod_device_info(host: str | None, port: int | None) -> dict:
+    from ojhc_lib.dghub import fetch_device_info
+    return fetch_device_info(host or "127.0.0.1", port)
 from ojhc_lib import platforms as platforms_mod  # noqa: E402
 from ojhc_lib import pressure as pressure_mod  # noqa: E402
 from ojhc_lib import profile as profile_mod  # noqa: E402
@@ -166,9 +171,23 @@ def cmd_run(args: argparse.Namespace) -> int:
     device_link = None
     enable_device = bool(args.device)
     if enable_device:
-        if profile_source != "real":
-            print(fail("--device 需要真实的校准档案（当前是演示档案）"))
-            print(info("先跑 `python ojhC.py calibrate` 完成真机校准，再带 --device"))
+        if args.trust_app_limit:
+            # 无校准模式：App 上限即安全上限，映射固定为上限的 20%~60%
+            info_dev = device_mod_device_info(args.host, args.port)
+            dev_max = int(info_dev.get("max_strength_A") or 0) or int(prof.device_max or 0) or 40
+            prof = profile_mod.new_profile(
+                20, 75, str(info_dev.get("device_type") or "v3"),
+                prof.channel or "both", prof.preset or "呼吸", device_max=dev_max)
+            profile_source = "app-limit"
+            print(info(f"无校准模式：设备上限 {dev_max}，输出范围 = 上限的 "
+                       f"{prof.perceptible_pct}%~{prof.user_max_pct}%"
+                       f"（s2≈{prof.intensity_for(0.35)}% s3≈{prof.intensity_for(0.50)}% "
+                       f"s4≈{prof.intensity_for(0.65)}% s5≈{prof.intensity_for(0.85)}%，"
+                       f"绝对强度 ≈{round(prof.intensity_for(0.35) / 100 * dev_max)}~"
+                       f"{round(prof.intensity_for(0.85) / 100 * dev_max)}）"))
+        elif profile_source != "real":
+            print(fail("--device 需要校准档案（或加 --trust-app-limit 用 App 上限直接映射）"))
+            print(info("先跑 `python ojhC.py calibrate` 校准，或加 --trust-app-limit 跳过校准"))
             return 2
         device_link = device_mod.DeviceLink(port=args.device_port)
         print(warn("⚠ 真实输出已启用：本会话通过闸门的失败事件会真的打到设备上"))
@@ -631,6 +650,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="允许 C 级数据源（AtCoder/洛谷/牛客扩展）驱动设备，默认禁止")
     p_run.add_argument("--device-wait", type=float, default=20.0,
                        help="等待设备插件连接的最长秒数（默认 20）")
+    p_run.add_argument("--trust-app-limit", action="store_true",
+                       help="无校准模式：直接按 DG-Lab App 里设的强度上限映射（不写档案、不做校准）")
     p_run.add_argument("--bridge", action="store_true",
                        help="强制走浏览器桥接（AtCoder/洛谷/牛客默认就是桥接）")
     p_run.add_argument("--bridge-port", type=int, default=8765,

@@ -196,3 +196,15 @@ python -c "import json,urllib.request;req=urllib.request.Request('http://127.0.0
 > **百分比与绝对强度**：DGHub 的 `delta_pct` / `strength` 都是「设备上限的百分比」。
 > 例如设备上限 40 时，50% = 绝对强度 20。校准会显示每一步的绝对强度估算并把上限写进档案，
 > `status` 里也会标注（≈N）。如果觉得整体太弱，先在 DG-Lab App 里把上限调高再重新校准。
+
+## 无校准模式（直接用 App 上限）
+
+不想做校准？加 `--trust-app-limit`：引擎直接读 DG-Lab App 里的强度上限，按它的
+20%~60% 映射（60% 是代码硬顶，绝不会超过你在 App 里设的上限）：
+
+```powershell
+python ojhC.py run --mock --device --trust-app-limit --max-run-min 1
+python ojhC.py run --url https://codeforces.com/contest/2267 --handle xuanh08 --replay-speed 60 --device --trust-app-limit
+```
+
+映射结果会在启动时打印（`s2≈…% … 绝对强度 ≈N~M`）。觉得整体弱/强，告诉我要调整的比例即可。

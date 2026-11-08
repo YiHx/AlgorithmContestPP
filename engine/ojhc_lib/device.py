@@ -92,21 +92,30 @@ class DeviceLink:
     # -------------------------------------------------- 连接信息文件（给插件发现用）
     def save_link_file(self, base_dir: Path | None = None) -> Path:
         from .profile import default_dir
-        directory = Path(base_dir) if base_dir else default_dir()
-        path = directory / LINK_FILE_NAME
         payload = {"host": self.host, "port": self.port, "token": self.token,
                    "protocol": PROTOCOL_VERSION, "written_at": time.time()}
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        return path
+        candidates = [Path(base_dir) if base_dir else default_dir()]
+        candidates.append(Path(__file__).resolve().parents[1] / ".local")
+        last_error: Exception | None = None
+        for directory in candidates:
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+                path = directory / LINK_FILE_NAME
+                path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+                self.link_file_path = path
+                return path
+            except OSError as exc:
+                last_error = exc
+                continue
+        raise OSError(f"无法写入设备链路文件: {last_error}")
 
-    @staticmethod
-    def remove_link_file(base_dir: Path | None = None) -> None:
-        from .profile import default_dir
-        directory = Path(base_dir) if base_dir else default_dir()
-        try:
-            (directory / LINK_FILE_NAME).unlink()
-        except FileNotFoundError:
-            pass
+    def remove_link_file(self) -> None:
+        path = getattr(self, "link_file_path", None)
+        if path is not None:
+            try:
+                Path(path).unlink()
+            except FileNotFoundError:
+                pass
 
     async def close(self) -> None:
         await self.estop("engine closing")
