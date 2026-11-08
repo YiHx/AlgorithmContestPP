@@ -1,0 +1,75 @@
+{
+  "id": "ojhc_probe",
+  "name": "OJHC 冒烟探针",
+  "version": "0.1.0",
+  "sdk": "1",
+  "author": "xuanh08",
+  "description": "OJ Hardcore Engine 的 M1 冒烟插件：验证 DGHub 链路、发一次可控测试脉冲、随时可停。默认只展示，不碰设备。",
+  "entry": "main.py",
+  "capabilities": {
+    "startup_check": true
+  },
+  "config_schema": [
+    {
+      "section": "测试脉冲",
+      "fields": [
+        {
+          "key": "armed",
+          "type": "bool",
+          "label": "允许真实输出（关闭 = 只展示）",
+          "default": false,
+          "description": "关闭时只会发展示卡片，绝不会输出电流"
+        },
+        {
+          "key": "fire_on_start",
+          "type": "bool",
+          "label": "启用插件时自动发一次测试脉冲",
+          "default": false,
+          "description": "需要先打开『允许真实输出』；关掉再打开可重复触发"
+        },
+        {
+          "key": "test_intensity",
+          "type": "percent",
+          "label": "测试强度",
+          "default": 15,
+          "min": 0,
+          "max": 40
+        },
+        {
+          "key": "test_duration",
+          "type": "duration",
+          "label": "脉冲时长（秒）",
+          "default": 0.8,
+          "min": 0.3,
+          "max": 3.0
+        },
+        {
+          "key": "channel",
+          "type": "channel",
+          "label": "通道",
+          "default": "both"
+        },
+        {
+          "key": "preset",
+          "type": "preset",
+          "label": "波形预设（留空则只改强度不播波形）",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "section": "安全",
+      "fields": [
+        {
+          "key": "max_intensity",
+          "type": "percent",
+          "label": "本次上限（代码硬上限 40）",
+          "default": 30,
+          "min": 0,
+          "max": 40,
+          "description": "无论测试强度填多少，都不会超过这里和代码里的 40%"
+        }
+      ]
+    }
+  ]
+}
