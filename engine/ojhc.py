@@ -278,6 +278,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     try:
         result = asyncio.run(runner_mod.run_adapter(
             adapter, prof, opts, store=st, replay=replay, device=device_link))
+        result.summary["profile_source"] = profile_source
     finally:
         if st is not None:
             st.close()
@@ -297,7 +298,14 @@ def _print_summary(result: "runner_mod.RunResult") -> None:
     s = result.summary
     print("\n" + "=" * 66)
     print(f"会话总结：{s['contest']}  [{s['platform']}]")
-    print(f"  档案        : {'演示档案（未校准）' if s.get('profile') == 'demo' else '真实校准档案'}")
+    src = s.get("profile_source")
+    if src == "app-limit":
+        profile_label = "App 上限模式（无校准）"
+    elif src == "demo":
+        profile_label = "演示档案（未校准）"
+    else:
+        profile_label = "真实校准档案"
+    print(f"  档案        : {profile_label}")
     print(f"  事件统计    : {s['submissions_events']}")
     print(f"  若启用设备  : {s['would_fire']} 次 {s['would_fire_by_kind']}")
     if s.get("device_enabled"):

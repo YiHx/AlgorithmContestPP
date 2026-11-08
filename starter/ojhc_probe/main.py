@@ -1,4 +1,4 @@
-"""OJHC 冒烟插件（M1）—— 验证 DGHub 链路、一次可控测试脉冲、随时可停。
+"""算法竞赛++ 冒烟探针（M1）—— 验证 DGHub 链路、一次可控测试脉冲、随时可停。
 
 只用标准库 + websockets（DGHub 主程序环境已提供），不依赖 dghub-sdk，
 方便手动调试，也方便以后把这段代码直接长成正式插件。
@@ -153,7 +153,7 @@ async def push_startup_check(ws, st: State) -> None:
     ]
     await send(
         ws,
-        {"op": "status", "fields": {"startup_check": {"title": "OJHC 冒烟检查", "steps": steps}}},
+        {"op": "status", "fields": {"startup_check": {"title": "算法竞赛++ 冒烟检查", "steps": steps}}},
     )
 
 
@@ -269,7 +269,7 @@ async def run(host: str, port: str, token: str,
         st.ready = True
         print(f"[ojhc] 握手成功（sdk {ack.get('sdk_version')}），插件 root={PLUGIN_ROOT}")
 
-        await send_log(ws, "info", "OJHC 冒烟插件已连接")
+        await send_log(ws, "info", "算法竞赛++ 冒烟探针已连接")
         if st.overrides:
             print(f"[ojhc] CLI 覆盖生效：{describe_config(st.cfg)}")
         if fire_now:
@@ -399,7 +399,7 @@ def selftest() -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="OJHC 冒烟插件（可纯 CLI 调试）")
+    parser = argparse.ArgumentParser(description="算法竞赛++ 冒烟探针（可纯 CLI 调试）")
     parser.add_argument("--host", default=os.environ.get("DGHUB_HOST", "127.0.0.1"))
     parser.add_argument("--port", default=os.environ.get("DGHUB_PORT", DEFAULT_PORT))
     parser.add_argument("--token", default=os.environ.get("DGHUB_TOKEN"))

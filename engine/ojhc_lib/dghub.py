@@ -34,7 +34,7 @@ DEFAULT_PORTS = (8000, 27020, 27021, 27022, 27023, 27800)
 # Engine 自己作为一个"插件"接进来（和 ojhC_probe 用不同 id，避免冲突）
 ENGINE_MANIFEST = {
     "id": "ojhc_engine",
-    "name": "OJHC Engine",
+    "name": "算法竞赛++ Engine",
     "version": "0.1.0",
     "sdk": "1",
     "author": "xuanh08",

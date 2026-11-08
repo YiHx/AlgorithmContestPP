@@ -1,4 +1,4 @@
-"""OJHC 硬核模式插件（M4）：DGHub 与 Engine 之间的设备执行端。
+"""算法竞赛++ 插件（M4）：DGHub 与 Engine 之间的设备执行端。
 
 安全模型（DESIGN.md §7.6）：
   * Engine 每 2s 发一次 lease（ttl 5s）；本插件每次输出前校验 lease_id + 一次性 nonce

@@ -147,7 +147,7 @@ CLI 参数会**覆盖**插件配置：`--armed / --intensity / --duration / --pr
 
 然后：
 
-1. 重启 DGHub → 插件中心启用「OJHC 硬核模式」；
+1. 重启 DGHub → 插件中心启用「算法竞赛++」；
 2. 引擎侧带 `--device` 跑比赛（必须已有真实校准档案）：
    ```powershell
    cd ..\engine

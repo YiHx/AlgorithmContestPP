@@ -437,7 +437,7 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
         link_file = device.save_link_file()
         device_started = True
         print(f"[device] 设备链路已启动：{url}（token 已写入 {link_file}）")
-        print("[device] 下一步：在 DGHub 里启用 OJHC 硬核模式插件（starter/ojhc_link）")
+        print("[device] 下一步：在 DGHub 里启用「算法竞赛++」插件（starter/ojhc_link）")
         if await device.wait_client(options.device_wait_s):
             print(f"[device] 插件就绪：device={device.status.device_type or '-'} "
                   f"connected={device.status.connected}")

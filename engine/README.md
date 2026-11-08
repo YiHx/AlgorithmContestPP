@@ -35,7 +35,7 @@ python ojhC.py run --url https://ac.nowcoder.com/acm/contest/12345 --handle 1234
 python ojhC.py sessions               # 历史会话列表
 python ojhC.py report --session 3     # 事件时间线 + 压力曲线 + 降级信息
 
-# 真实设备输出（M4，需真机校准档案 + DGHub 里启用 OJHC 硬核模式插件）
+# 真实设备输出（M4，需真机校准档案 + DGHub 里启用 「算法竞赛++」插件）
 python ojhC.py run --url https://codeforces.com/contest/1847 --handle tourist
 # 已结束的比赛用倍速重放（不访问实时时钟）：
 python ojhC.py run --url https://codeforces.com/contest/1847 --handle tourist --replay-speed 60 --device
@@ -218,7 +218,7 @@ python ojhC.py run --url https://codeforces.com/contest/2267 --handle xuanh08 --
 
 ## 在 DGHub 插件页面直接调参（推荐）
 
-「OJHC 硬核模式」插件配置页可直接调整（改完即时生效，Engine 会打印"插件页面调参已生效"）：
+「算法竞赛++」插件配置页可直接调整（改完即时生效，Engine 会打印"插件页面调参已生效"）：
 
 | 配置 | 默认 | 范围 | 作用 |
 |---|---|---|---|

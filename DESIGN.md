@@ -1118,7 +1118,7 @@ Engine ──(本地 WS：event / intensity / lease)──► 插件 ──(trig
 |---|---|---|
 | 1 | 装 DGHub 2.0（dghub.top），先确认它能正常驱动设备 | DGHub 自己能让设备动 |
 | 2 | 读协议：SDK 仓库 `docs/PLUGIN_DEVELOPMENT.md`（或应用内「另存为…」） | 能看懂 `hello` / `trigger` / `event` 字段 |
-| 3 | 导入 `starter/ojhc_probe.zip` | 插件列表出现"OJHC 冒烟探针" |
+| 3 | 导入 `starter/ojhc_probe.zip` | 插件列表出现"算法竞赛++ 冒烟探针" |
 | 4 | 启用插件（`armed=off`） | 事件流出现测试卡片，状态"待命（仅展示）" |
 | 5 | 打开 `armed` + `fire_on_start`，关掉再启用插件 | 一次 15% / 0.8s 脉冲，结束自动回正 |
 | 6 | 改代码时可手动跑：`python main.py --port <port> --token <token>` | 控制台看到握手 + 配置推送 |
