@@ -482,9 +482,21 @@ class OjhPlugin:
             except OSError:
                 pass
             log_path = log_dir / "launcher_last.log"
-            command = (f'"{args[0]}" ' + " ".join(args[1:])
-                       + f' > "{log_path}" 2>&1')
-            spawn_args = ["cmd.exe", "/k", command]
+            bat_path = log_dir / "launch_engine.bat"
+            # 用 .bat 启动，避免 cmd 引号转义问题；pause 让错误窗口停留
+            bat = (
+                "@echo off\r\n"
+                f'cd /d "{engine_dir}"\r\n'
+                f'"{args[0]}" ' + " ".join(args[1:]) + f' > "{log_path}" 2>&1\r\n'
+                "echo.\r\n"
+                "echo [engine exited] press any key to close\r\n"
+                "pause >nul\r\n"
+            )
+            try:
+                bat_path.write_text(bat, encoding="ascii", errors="replace")
+            except OSError:
+                pass
+            spawn_args = ["cmd.exe", "/c", str(bat_path)]
         try:
             self._engine_proc = subprocess.Popen(
                 spawn_args, cwd=str(engine_dir), creationflags=flags)
