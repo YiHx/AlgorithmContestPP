@@ -224,7 +224,11 @@ class OjhPlugin:
                         if self.engine_writer is not None:
                             await self._engine_send({"op": "tuning", "tuning": self.tuning})
                         await self._dg_log(
-                            f"配置已更新：{json.dumps(self.tuning, ensure_ascii=False)}")
+                            "配置已更新："
+                            f"{json.dumps(self.tuning, ensure_ascii=False)}"
+                            f" | 启动器 auto={self.cfg.get('auto_start_engine')} "
+                            f"url={'有' if self.cfg.get('engine_url') else '无'} "
+                            f"handle={'有' if self.cfg.get('engine_handle') else '无'}")
                         await self.maybe_launch_engine()
                 elif op == "ping":
                     await self._dg_send({"op": "pong", "t": msg.get("t")})
@@ -404,6 +408,9 @@ class OjhPlugin:
                 return
             self._launch_attempted = False      # 引擎已退出 → 允许重试
         if self._launch_attempted:
+            if not getattr(self, "_logged_attempted", False):
+                self._logged_attempted = True
+                await self._dg_log("启动器：本次已尝试启动引擎，等待它连接…")
             return
         now = time.monotonic()
         if now - getattr(self, "_last_launch_try", 0.0) < 10.0:
@@ -526,7 +533,7 @@ class OjhPlugin:
     # -------------------------------------------------- 入口
     async def run(self, engine_port: int | None, engine_token: str | None) -> int:
         await self.connect_dghub()
-        self.maybe_launch_engine()
+        await self.maybe_launch_engine()
         if not await self.wait_device(15.0):
             await self._dg_log("设备未连接：仍会常驻等待 Engine，但不会输出", "warning")
         # 常驻模式：先在 DGHub 启用插件、后启动 Engine 也能连上；Engine 断开后回到等待

@@ -31,6 +31,7 @@ PENDING_VERDICTS = {VERDICT_TESTING}
 # 精确匹配（缩写/状态词）优先，避免 "waiting" 被当成 "wa"
 _EXACT_VERDICT = {
     "ac": VERDICT_OK, "ok": VERDICT_OK, "accepted": VERDICT_OK,
+    "pretests passed": VERDICT_OK, "pretests_passed": VERDICT_OK,
     "wa": VERDICT_WA, "wrong answer": VERDICT_WA,
     "tle": VERDICT_TLE, "mle": VERDICT_MLE, "re": VERDICT_RE, "ce": VERDICT_CE,
     "pe": VERDICT_WA, "ole": VERDICT_WA,
@@ -44,6 +45,7 @@ _EXACT_VERDICT = {
 # 短语包含匹配（长句优先；不放 "wa"/"re" 这类短词，否则 "waiting" 会误判）
 _VERDICT_PHRASES: list[tuple[str, str]] = [
     ("accepted", VERDICT_OK),
+    ("pretests passed", VERDICT_OK),   # CF 比赛中通过预测试（UI 不显示 AC）
     ("correct", VERDICT_OK),
     ("wrong answer", VERDICT_WA),
     ("time limit", VERDICT_TLE),
