@@ -60,6 +60,8 @@ class CodeforcesAdapter:
         self._standings_at = 0.0
         # 浏览器快速通道（扩展盯页面，绕开 CF API 2s 限速）；None = 未启用
         self.fast = None
+        self._fast_connected_logged = False
+        self._fast_wait_logged = False
         self._fast_cursor: str | None = None
         self._last_native_poll = 0.0
         self.poll_sleep_s = 2.2
@@ -97,6 +99,14 @@ class CodeforcesAdapter:
 
         # 1) 浏览器快速通道：无 CF API 限速，先收
         if self.fast is not None:
+            handshakes = getattr(self.fast, "handshakes", 0)
+            if handshakes and not self._fast_connected_logged:
+                self._fast_connected_logged = True
+                print("[fast] 浏览器扩展已连接：提交→电击延迟约 1~2 秒")
+            elif not handshakes and not self._fast_wait_logged:
+                self._fast_wait_logged = True
+                print("[fast] 等待浏览器扩展连接…（打开 CF 比赛页面即可，"
+                      "未连接时自动走官方 API）")
             try:
                 for sub in self.fast.drain(self._fast_cursor):
                     self._fast_cursor = sub.sid

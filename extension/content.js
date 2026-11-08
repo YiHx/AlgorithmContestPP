@@ -8,11 +8,24 @@
   "use strict";
 
   const PLATFORM = detectPlatform();
+  if (PLATFORM === "codeforces") {
+    // 从提交页跳转过来，或在 my 页：开 20 秒加速窗口
+    if (/\/submit\/?$/.test(location.pathname)) fastUntil = Date.now() + 30000;
+    if (/\/my\/?$/.test(location.pathname)) fastUntil = Date.now() + 20000;
+  }
+  function pollBase() {
+    if (PLATFORM === "codeforces") {
+      return Date.now() < fastUntil ? BURST_POLL_MS : FAST_POLL_MS;
+    }
+    return POLL_MS;
+  }
   if (!PLATFORM) return;
   const CONTEST_ID = contestIdFromUrl();
 
   const POLL_MS = 3000;
   const FAST_POLL_MS = 1000;   // Codeforces：扩展盯页面，绕过官方 API 的 2s 限速
+  const BURST_POLL_MS = 300;   // 刚提交/刚打开 my 页时加速
+  let fastUntil = 0;           // 加速窗口截止时间
   const KNOWN_VERDICTS = [
     "AC", "WA", "TLE", "MLE", "RE", "CE", "WJ", "QLE", "OLE", "IE",
     "WRONG_ANSWER", "TIME_LIMIT_EXCEEDED", "RUNTIME_ERROR", "COMPILATION_ERROR",
@@ -309,7 +322,7 @@
         lastError = "engine not reachable";
       }
       if (!session || session.platform !== PLATFORM || String(session.contest_id) !== String(CONTEST_ID)) {
-        await sleep(POLL_MS);
+        await sleep(pollBase());
         continue;
       }
       try {
@@ -320,8 +333,7 @@
         if (payload.submissions && payload.submissions.length) {
           ok = (await post("/ingest/submissions", payload.submissions)) && ok;
         }
-        backoff = ok ? (PLATFORM === "codeforces" ? FAST_POLL_MS : POLL_MS)
-                     : Math.min(backoff * 2, 30000);
+        backoff = ok ? pollBase() : Math.min(backoff * 2, 30000);
       } catch (e) {
         lastError = String(e);
         backoff = Math.min(backoff * 2, 30000);
