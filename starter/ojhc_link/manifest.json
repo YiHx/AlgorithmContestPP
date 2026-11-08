@@ -11,6 +11,54 @@
   },
   "config_schema": [
     {
+      "section": "Engine 启动器（可选）",
+      "fields": [
+        {
+          "key": "auto_start_engine",
+          "type": "bool",
+          "label": "插件启动时自动打开引擎终端（需填 URL 和 handle）",
+          "default": false,
+          "description": "打开后，插件会自己启动一个终端窗口运行 ojhC.py run 并读取输出"
+        },
+        {
+          "key": "engine_url",
+          "type": "text",
+          "label": "比赛 URL（例如 https://codeforces.com/contest/1234）",
+          "default": ""
+        },
+        {
+          "key": "engine_handle",
+          "type": "text",
+          "label": "你的 OJ 用户名",
+          "default": ""
+        },
+        {
+          "key": "engine_device",
+          "type": "bool",
+          "label": "带设备输出（关闭=只记录不出电）",
+          "default": true
+        },
+        {
+          "key": "engine_virtual",
+          "type": "bool",
+          "label": "虚拟参赛：从现在开始计时",
+          "default": false
+        },
+        {
+          "key": "engine_dir",
+          "type": "text",
+          "label": "引擎目录（ojhC.py 所在目录，留空自动查找）",
+          "default": ""
+        },
+        {
+          "key": "engine_python",
+          "type": "text",
+          "label": "Python 可执行文件（默认 python）",
+          "default": "python"
+        }
+      ]
+    },
+    {
       "section": "模式",
       "fields": [
         {
