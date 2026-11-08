@@ -149,6 +149,9 @@ class SessionRunner:
     async def _emit(self, event: Event, out: list[tuple[Event, Decision]]) -> None:
         event.s = EVENT_S.get(event.kind, 0)
         plugin_tuning = getattr(self.device, "tuning", None) if self.device else None
+        if (event.kind == "level_up" and plugin_tuning
+                and bool(plugin_tuning.get("allow_level_up"))):
+            event.s = 2      # 开启“等级上升也电”时给一个轻档脉冲
         self.gate.set_tuning(plugin_tuning)
         decision = self.gate.evaluate(event, self.state, event.rel_s)
         if decision.would_fire and plugin_tuning:
