@@ -79,7 +79,9 @@ class DeviceLink:
             try:
                 self._server = await asyncio.start_server(
                     self._handle_client, self.host, candidate)
-                self.port = candidate
+                sockets = self._server.sockets or []
+                # 端口 0 时取系统分配的真实端口
+                self.port = (sockets[0].getsockname()[1] if sockets else candidate)
                 break
             except OSError as exc:
                 last_error = exc
