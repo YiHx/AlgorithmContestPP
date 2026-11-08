@@ -244,22 +244,42 @@ class SessionRunner:
             return float(tuning["no_ac_minutes"]) * 60
         return self.no_ac_s
 
+    def next_timeout_s(self) -> float | None:
+        """下一个"时间型事件"应该发生的比赛内时刻（秒）；没有则 None。
+
+        简单模式 = 距上次 AC / 上次"没 AC 电击"满间隔；压力模式 = 超时未提交 / 未 AC。
+        回放按这个时刻推进虚拟时钟，保证"到点就电"，而不是等下一次提交。
+        """
+        if self._mode() == "simple":
+            interval = self._no_ac_interval_s()
+            last_shock = getattr(self, "_last_no_ac_shock", -1e9)
+            due_ac = self.last_ac_s + interval
+            if last_shock > -1e8:
+                return max(due_ac, last_shock + interval)
+            return due_ac
+        candidates: list[float] = []
+        if self.no_submit_armed:
+            candidates.append(self.last_sub_s + self.options.no_submit_minutes * 60)
+        if self.no_ac_armed:
+            candidates.append(self.last_ac_s + self.no_ac_s)
+        return min(candidates) if candidates else None
+
     async def check_timeouts(self, elapsed: float) -> list[tuple[Event, Decision]]:
         out: list[tuple[Event, Decision]] = []
         if self._mode() == "simple":
             # 简单模式：只要「距上次 AC 超过设定时间」就电一次，之后按同样间隔重复
             interval = self._no_ac_interval_s()
             last_shock = getattr(self, "_last_no_ac_shock", -1e9)
-            if elapsed - self.last_ac_s > interval and elapsed - last_shock >= interval:
+            if elapsed - self.last_ac_s >= interval and elapsed - last_shock >= interval:
                 self._last_no_ac_shock = elapsed
                 await self._emit(Event("timeout_no_ac", elapsed,
                                        f"距上次 AC {fmt_time(elapsed - self.last_ac_s)}"), out)
             return out
-        if self.no_submit_armed and elapsed - self.last_sub_s > self.options.no_submit_minutes * 60:
+        if self.no_submit_armed and elapsed - self.last_sub_s >= self.options.no_submit_minutes * 60:
             self.no_submit_armed = False
             await self._emit(Event("timeout_no_submit", elapsed,
                                    f"距上次提交 {fmt_time(elapsed - self.last_sub_s)}"), out)
-        if self.no_ac_armed and elapsed - self.last_ac_s > self.no_ac_s:
+        if self.no_ac_armed and elapsed - self.last_ac_s >= self.no_ac_s:
             self.no_ac_armed = False
             await self._emit(Event("timeout_no_ac", elapsed,
                                    f"距上次 AC {fmt_time(elapsed - self.last_ac_s)}"), out)
@@ -352,17 +372,32 @@ async def _replay_paced(adapter: PlatformAdapter, runner: SessionRunner,
         print("[replay] 警告：这场比赛没有该 handle 的提交。"
               "检查 --handle 拼写，或换一场你真的参加过的比赛。")
         return runner.finalize()
+
+    async def _fire_due_timeouts(before_rel: float) -> None:
+        """把虚拟时钟推进到 before_rel，触发所有"到点"的超时事件。"""
+        for _ in range(500):             # 防御：最多补 500 个时间型事件
+            due = runner.next_timeout_s()
+            if due is None or due > before_rel:
+                return
+            events = await runner.check_timeouts(due)
+            for ev, dec in events:
+                runner.print_line(ev, dec)
+            if not events:
+                return
+
     prev_rel = 0.0
     for sub in subs:
         delay = max(0.0, sub.rel_s - prev_rel) / options.replay_speed
         if delay > 0:
             await asyncio.sleep(min(delay, 3.0))
+        await _fire_due_timeouts(sub.rel_s)
         standings = await runner._standings(adapter, sub.rel_s)
         for ev, dec in await runner.on_submission(sub, standings):
             runner.print_line(ev, dec)
         for ev, dec in await runner.check_timeouts(sub.rel_s):
             runner.print_line(ev, dec)
         prev_rel = sub.rel_s
+    await _fire_due_timeouts(runner.meta.duration_s)
     for ev, dec in await runner.check_timeouts(runner.meta.duration_s):
         runner.print_line(ev, dec)
     return runner.finalize()
