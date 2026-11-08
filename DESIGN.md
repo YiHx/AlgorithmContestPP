@@ -1434,6 +1434,7 @@ MVP **必须包含设备与校准**（这是核心目的），不含 AtCoder/牛
 | v0.3.7 | **P2 浏览器桥接**：`bridge.py`（本地 HTTP + token，C 级数据源）+ `extension/`（MV3：AtCoder/洛谷/牛客 collectors、自动发现 Engine）；VJudge 榜单改按 `/contest/rank/single` 自算（无 rank 字段、4/6 元组两种赛制、封榜启发式）；判题归一化支持中文 statusMessage；research v2（平台端点实测）归档 |
 | v0.3.8 | **P3 设备链路 M4**：`device.py`（TCP JSONL、租约续期、一次性 nonce、ack 超时、estop）；`starter/ojhc_link` 生产插件（DGHub + Engine 双连接、租约过期归零、Engine 断开归零、只用 rollback）；`run --device` 要求真实校准档案、C 级源默认禁设备；SQLite 记录 allowed；selftest 增加设备链路往返测试 |
 | v0.3.10 | **真机联调修复**：DGHub API 实际端口 8000（自动发现）；`trigger` 必须带波形 `preset`，空 preset 只会改强度不出波形（校准 50% 也无感）→ 校准默认「呼吸」并从 `/api/pulse-presets` 校验；`test-fire` 验证波形帧确实下发 |
+| v0.3.11 | 新增 `--replay-speed N`：已结束的比赛按提交时间差 N 倍速重放（不再因实时时钟超时瞬间退出）；文档示例去掉 `<id>/<handle>` 占位符（Windows CMD 会把 `<>` 当重定向） |
 | v0.3.9 | **P4 测试与交付**：`engine/tests/`（stdlib unittest，19 例：压力数值回归 / 判题归一化 / 档位映射 / 闸门 / VJudge 榜单解析 / URL 识别 / SQLite / 桥接 / 设备租约 / 回放）；README 增加真机验收清单；发布 alpha Release（插件 zip 附件） |
 
 ---

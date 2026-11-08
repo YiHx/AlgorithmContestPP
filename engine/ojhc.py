@@ -172,6 +172,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         no_submit_minutes=args.no_submit_minutes,
         no_ac_minutes=args.no_ac_minutes, dry_run=not enable_device,
         max_run_s=(args.max_run_min * 60 if args.max_run_min else None),
+        replay_speed=args.replay_speed,
         enable_device=enable_device,
         device_preset=(args.device_preset if args.device_preset is not None
                        else (prof.preset or "")),
@@ -602,6 +603,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="平台拿不到时长时的兜底（分钟），目前 VJudge 用")
     p_run.add_argument("--max-run-min", type=float, default=None,
                        help="实跑硬上限（分钟）；测试/演示用，默认跑完比赛时长")
+    p_run.add_argument("--replay-speed", type=float, default=0.0,
+                       help="把已结束的比赛按 N 倍速重放（用提交时间差，不依赖实时时钟）")
     p_run.add_argument("--percentile", type=float, default=0.25, help="目标百分位")
     p_run.add_argument("--preset", choices=["casual", "hardcore"], default="casual")
     p_run.add_argument("--speed", type=float, default=0.0, help="回放加速倍数（0=瞬时）")

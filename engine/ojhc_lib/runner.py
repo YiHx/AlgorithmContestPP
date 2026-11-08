@@ -58,6 +58,7 @@ class RunOptions:
     no_ac_minutes: float | None = None
     max_run_s: float | None = None   # 实跑硬上限（测试/演示用；None=跑完比赛时长）
     speed: float = 0.0            # 0 = 立即回放；>0 = 每模拟秒等待 1/speed 秒
+    replay_speed: float = 0.0     # >0：把已结束比赛按 N 倍速重放（忽略实时时钟）
     dry_run: bool = True
     quiet: bool = False
     enable_device: bool = False       # --device：本会话允许真实输出
@@ -279,6 +280,34 @@ class SessionRunner:
         return self.result
 
 
+async def _replay_paced(adapter: PlatformAdapter, runner: SessionRunner,
+                        options: RunOptions) -> RunResult:
+    """把一场已结束比赛按 N 倍速重放：先拉全量提交，再按比赛内时间差 sleep。"""
+    cursor: str | None = None
+    subs: list[Submission] = []
+    while True:
+        batch = await adapter.poll(cursor)
+        if not batch:
+            break
+        subs.extend(batch)
+        cursor = batch[-1].sid
+    print(f"[replay] 已取到 {len(subs)} 条提交，按 {options.replay_speed:g}× 倍速重放")
+    prev_rel = 0.0
+    for sub in subs:
+        delay = max(0.0, sub.rel_s - prev_rel) / options.replay_speed
+        if delay > 0:
+            await asyncio.sleep(min(delay, 3.0))
+        standings = await runner._standings(adapter, sub.rel_s)
+        for ev, dec in await runner.on_submission(sub, standings):
+            runner.print_line(ev, dec)
+        for ev, dec in await runner.check_timeouts(sub.rel_s):
+            runner.print_line(ev, dec)
+        prev_rel = sub.rel_s
+    for ev, dec in await runner.check_timeouts(runner.meta.duration_s):
+        runner.print_line(ev, dec)
+    return runner.finalize()
+
+
 def _count(items: list[str]) -> dict[str, int]:
     out: dict[str, int] = {}
     for item in items:
@@ -345,6 +374,11 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
 
         start = meta.start_ts or time.time()
         limit_s = meta.duration_s if options.max_run_s is None else min(meta.duration_s, options.max_run_s)
+
+        # 已结束的比赛：按倍速重放（用提交自带的 relativeTimeSeconds，不依赖实时时钟）
+        if options.replay_speed and options.replay_speed > 0:
+            return await _replay_paced(adapter, runner, options)
+
         cursor = None
         last_standings: Standings | None = None
         last_standings_at = 0.0

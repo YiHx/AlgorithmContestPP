@@ -24,17 +24,21 @@ python ojhC.py status                 # 档案与档位映射
 
 # 比赛回放 / 实跑（多平台）
 python ojhC.py run --mock --rating 1400          # 内置 CF 夹具，零网络
-python ojhC.py run --url https://codeforces.com/contest/1847 --handle <handle>
-python ojhC.py run --platform vjudge --contest 654321 --handle <handle> --duration-min 120
-python ojhC.py run --url https://atcoder.jp/contests/abc300 --handle <handle>   # 桥接模式
-python ojhC.py run --url https://ac.nowcoder.com/acm/contest/12345 --handle <handle>
+python ojhC.py run --url https://codeforces.com/contest/1847 --handle tourist
+# 已结束的比赛用倍速重放（不访问实时时钟）：
+python ojhC.py run --url https://codeforces.com/contest/1847 --handle tourist --replay-speed 60
+python ojhC.py run --platform vjudge --contest 654321 --handle tourist --duration-min 120
+python ojhC.py run --url https://atcoder.jp/contests/abc300 --handle tourist   # 桥接模式
+python ojhC.py run --url https://ac.nowcoder.com/acm/contest/12345 --handle 1234567
 
 # 历史与复盘
 python ojhC.py sessions               # 历史会话列表
 python ojhC.py report --session 3     # 事件时间线 + 压力曲线 + 降级信息
 
 # 真实设备输出（M4，需真机校准档案 + DGHub 里启用 OJHC 硬核模式插件）
-python ojhC.py run --url https://codeforces.com/contest/1847 --handle <handle> --device
+python ojhC.py run --url https://codeforces.com/contest/1847 --handle tourist
+# 已结束的比赛用倍速重放（不访问实时时钟）：
+python ojhC.py run --url https://codeforces.com/contest/1847 --handle tourist --replay-speed 60 --device
 python ojhC.py run --mock --device --max-run-min 1     # 演示档案会被拒绝（安全）
 
 # 自检
