@@ -18,11 +18,11 @@ from . import profile as profile_mod
 from .dghub import DGHubClient, DeviceInfo
 from .util import Prompter, clamp, clamp_int, fail, info, median, ok, warn
 
-# 校准期专用限制（比正式输出更保守）
-CAL_MAX_PCT = 50
-CAL_PULSE_S = 0.8
+# 校准期专用限制（都按“设备上限的百分比”，不会超过 App 里设的上限）
+CAL_MAX_PCT = 80            # 最多测到设备上限的 80%，留 20% 余量
+CAL_PULSE_S = 1.2           # 1.2s 比 0.8s 更容易稳定感觉到
 CAL_COOLDOWN_S = 3.0
-CAL_STEP_PCT = 5
+CAL_STEP_PCT = 10           # 从 10% 起，每档 +10%（更少步骤、更好分辨）
 CAL_MIN_SPAN = 15
 CAL_MIN_USABLE = 10      # user_max - I_p 至少这么宽，否则档位分不出强弱
 CAL_CONFIRM_TIMES = 3
@@ -78,7 +78,7 @@ async def _pulse(client: DGHubClient, pct: int, preset: str, channel: str,
 async def _step_perceptible(client: DGHubClient, prompter: Prompter, preset: str,
                             channel: str, dry_run: bool, fast: bool) -> int:
     print("\n=== Step 1：找「刚能感觉到」的强度（I_p） ===")
-    print("每档会打一次 0.8 秒脉冲。感觉到就说 y；连续 3 次达 2 次即认定。")
+    print("每档会打一次 1.2 秒脉冲。轻微麻/刺也算“有感觉”；连续 3 次达 2 次即认定。")
     pct = CAL_STEP_PCT
     while pct <= CAL_MAX_PCT:
         print(f"\n[{pct}%] 打一次…", flush=True)

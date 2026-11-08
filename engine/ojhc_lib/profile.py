@@ -54,10 +54,11 @@ class DeviceProfile:
         return max(0, self.comfort_pct - self.perceptible_pct)
 
     def is_valid(self) -> bool:
+        # comfort_pct 是「设备上限的百分比」，可以到 100；真正封顶的是 user_max_pct
         return (
             self.version == 1
-            and 0 < self.perceptible_pct < self.comfort_pct <= HARD_CAP_PCT
-            and self.user_max_pct > 0
+            and 0 < self.perceptible_pct < self.comfort_pct <= 100
+            and 0 < self.user_max_pct <= HARD_CAP_PCT
         )
 
     def age_days(self) -> float | None:
