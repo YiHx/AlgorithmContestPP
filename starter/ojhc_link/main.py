@@ -56,9 +56,14 @@ def normalize_tuning(cfg: dict) -> dict:
             value = default
         return max(lo, min(hi, value))
 
-    mode = str(cfg.get("mode") or "simple")
+    if "use_pressure_mode" in cfg:
+        mode = "pressure" if cfg.get("use_pressure_mode") else "simple"
+    else:
+        mode = str(cfg.get("mode") or "simple")
+        if mode not in ("simple", "pressure"):
+            mode = "simple"
     t = {
-        "mode": mode if mode in ("simple", "pressure") else "simple",
+        "mode": mode,
         "no_ac_minutes": num("no_ac_minutes", 5, 120, TUNING_DEFAULTS["no_ac_minutes"]),
         "no_ac_escalation": num("no_ac_escalation", 0, 20, TUNING_DEFAULTS["no_ac_escalation"]),
         "base_intensity": num("base_intensity", 40, 90, TUNING_DEFAULTS["base_intensity"]),
