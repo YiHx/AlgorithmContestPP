@@ -112,6 +112,8 @@ def recent_score(recent: list[tuple[float, float]], cfg: PressureConfig = DEFAUL
     num = 0.0
     den = cfg.recent_prior_w
     for score, age in items:
+        # 防御：CF 虚拟参赛/赛外提交可能返回 INT_MAX 之类的时间戳
+        age = max(0.0, min(float(age), cfg.recent_max_age_s))
         w = 0.5 ** (age / cfg.recent_halflife_s)
         num += w * score
         den += w

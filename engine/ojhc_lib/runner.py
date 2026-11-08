@@ -212,7 +212,8 @@ class SessionRunner:
     def _pressure(self, elapsed: float, standings: Standings) -> PressureState:
         frozen = standings.frozen or (
             self.meta.frozen_from_s is not None and elapsed >= self.meta.frozen_from_s)
-        recent = sorted(((s, elapsed - t) for s, t in self.recent), key=lambda x: x[1])
+        recent = sorted(((s, max(0.0, elapsed - t)) for s, t in self.recent),
+                        key=lambda x: x[1])
         inp = PressureInput(
             now=elapsed, tau=clamp(elapsed / max(self.meta.duration_s, 1), 0, 1),
             duration_s=self.meta.duration_s,
@@ -495,6 +496,10 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
                     runner.degraded.append(f"poll error: {exc}")
                 batch = []
             for sub in batch:
+                # CF 虚拟参赛/赛外提交的 relativeTimeSeconds 可能是 INT_MAX：用本次真实 elapsed 代替
+                if (sub.rel_s is None or sub.rel_s < 0
+                        or sub.rel_s > max(meta.duration_s * 2, 7 * 86400)):
+                    sub.rel_s = elapsed
                 if last_standings is None or time.time() - last_standings_at > 45:
                     last_standings = await runner._standings(adapter, sub.rel_s)
                     last_standings_at = time.time()

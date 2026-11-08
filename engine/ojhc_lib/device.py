@@ -53,7 +53,7 @@ class DeviceLink:
     """Engine 侧设备链路：TCP 服务器 + 租约管理 + 输出请求。"""
 
     def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_DEVICE_PORT,
-                 lease_ttl_s: float = 5.0, renew_s: float = 2.0) -> None:
+                 lease_ttl_s: float = 12.0, renew_s: float = 2.0) -> None:
         self.host = host
         self.port = port
         self.lease_ttl_s = lease_ttl_s
