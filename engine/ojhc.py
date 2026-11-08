@@ -216,6 +216,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         no_ac_minutes=args.no_ac_minutes, dry_run=not enable_device,
         max_run_s=(args.max_run_min * 60 if args.max_run_min else None),
         replay_speed=args.replay_speed,
+        mode=args.mode,
         enable_device=enable_device,
         device_preset=(args.device_preset if args.device_preset is not None
                        else (prof.preset or "")),
@@ -496,11 +497,11 @@ def cmd_selftest(args: argparse.Namespace) -> int:
     # 8) 闸门
     prof2 = profile_mod.new_profile(20, 45, "v3", "both", "")
     wa = feedback_mod.Event("verdict.wa", 100.0, "题 B", s=feedback_mod.EVENT_S["verdict.wa"])
-    dec = feedback_mod.Gate(prof2, "casual").evaluate(
+    dec = feedback_mod.Gate(prof2, "casual", mode="pressure").evaluate(
         wa, pressure_mod.PressureState(p=30.0, level=1, confidence="high"), 100.0)
     if not dec.would_fire:
         problems.append(f"L1 WA 应 would-fire：{dec.deny}")
-    dec0 = feedback_mod.Gate(prof2, "casual").evaluate(
+    dec0 = feedback_mod.Gate(prof2, "casual", mode="pressure").evaluate(
         feedback_mod.Event("verdict.wa", 100.0, "题 B", s=2),
         pressure_mod.PressureState(p=10.0, level=0, confidence="high"), 100.0)
     if dec0.would_fire:
@@ -572,7 +573,7 @@ def cmd_selftest(args: argparse.Namespace) -> int:
         timeline = platforms_mod.load_mock(DEFAULT_FIXTURE)
         result = asyncio.run(runner_mod.run_adapter(
             timeline, prof2,
-            runner_mod.RunOptions(rating=1400, quiet=True), store=None, replay=True))
+            runner_mod.RunOptions(rating=1400, quiet=True, mode="pressure"), store=None, replay=True))
         if len(result.events) < 8:
             problems.append(f"回放事件数异常：{len(result.events)}")
         if result.summary.get("would_fire", 0) < 1:
@@ -655,9 +656,11 @@ def build_parser() -> argparse.ArgumentParser:
                        help="把已结束的比赛按 N 倍速重放（用提交时间差，不依赖实时时钟）")
     p_run.add_argument("--percentile", type=float, default=0.25, help="目标百分位")
     p_run.add_argument("--preset", choices=["casual", "hardcore"], default="casual")
+    p_run.add_argument("--mode", choices=["simple", "pressure"], default="simple",
+                       help="simple=只有长时间没 AC 才电（默认）；pressure=压力算法")
     p_run.add_argument("--speed", type=float, default=0.0, help="回放加速倍数（0=瞬时）")
     p_run.add_argument("--no-submit-minutes", type=float, default=30.0)
-    p_run.add_argument("--no-ac-minutes", type=float, default=None)
+    p_run.add_argument("--no-ac-minutes", type=float, default=None, help="简单模式：多久没 AC 电一次（分钟，默认 20）")
     p_run.add_argument("--db", default=None, help="SQLite 路径（默认 ~/.ojhc/ojhc.db）")
     p_run.add_argument("--no-store", action="store_true", help="不写历史")
     p_run.add_argument("--device", action="store_true",

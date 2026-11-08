@@ -50,6 +50,8 @@ HOURLY_CAP = 30
 
 # 插件页面可调参数（Engine 端再钳一次，硬边界不可绕过）
 TUNING_DEFAULTS = {
+    "mode": "simple",            # simple=只有长时间没 AC 才电；pressure=压力算法
+    "no_ac_minutes": 20,         # 简单模式下：多久没 AC 电一次
     "base_intensity": 74, "intensity_step": 4, "max_s": 4,
     "cooldown_s": 90, "hourly_cap": 30, "allow_level_up": False, "preset": "呼吸",
 }
@@ -66,7 +68,12 @@ def normalize_tuning(raw: dict | None) -> dict | None:
             value = default
         return max(lo, min(hi, value))
 
+    mode = str(raw.get("mode") or "simple")
+    if mode not in ("simple", "pressure"):
+        mode = "simple"
     return {
+        "mode": mode,
+        "no_ac_minutes": num("no_ac_minutes", 5, 120, 20),
         "base_intensity": num("base_intensity", 40, 90, 74),
         "intensity_step": num("intensity_step", 0, 10, 4),
         "max_s": num("max_s", 2, 5, 4),
@@ -113,7 +120,8 @@ class Gate:
     """闸门 + 冷却/令牌桶/升压禁止/无 AC 上限的**模拟**。"""
 
     def __init__(self, profile: DeviceProfile | None, preset: str = "casual",
-                 dry_run: bool = True) -> None:
+                 dry_run: bool = True, mode: str = "simple") -> None:
+        self.mode = mode if mode in ("simple", "pressure") else "simple"
         self.profile = profile
         self.preset_name = preset if preset in PRESETS else "casual"
         self.preset = PRESETS[self.preset_name]
@@ -123,6 +131,8 @@ class Gate:
 
     def set_tuning(self, raw: dict | None) -> None:
         self.tuning = normalize_tuning(raw)
+        if self.tuning:
+            self.mode = self.tuning["mode"]
 
     @property
     def profile_ok(self) -> bool:
@@ -160,23 +170,30 @@ class Gate:
             cooldown_base = float(tuning["cooldown_s"])
             hourly_cap = int(tuning["hourly_cap"])
             allow_level_up = allow_level_up or bool(tuning["allow_level_up"])
+        simple = self.mode == "simple"
 
         # 事件本身是否要输出
         if event.kind == "level_up" and not allow_level_up:
             d.deny.append(f"level_up 事件在 {self.preset_name} 预设下关闭")
             return d
+        if simple and event.kind != "timeout_no_ac":
+            d.deny.append("简单模式：只有「长时间没有 AC」才电")
+            return d
         if event.s <= 0:
             d.deny.append("纯展示事件（无输出）")
             return d
 
-        # 感受等级：受压力等级上限约束
-        s_eff = min(event.s, LEVEL_CAP[state.level], max_s)
+        # 感受等级：简单模式只认超时未 AC（不受等级约束）；压力模式受等级上限约束
+        if simple:
+            s_eff = min(event.s, max_s)
+        else:
+            s_eff = min(event.s, LEVEL_CAP[state.level], max_s)
         if s_eff <= 0:
             d.deny.append(f"level=L{state.level} 封顶 s≤{LEVEL_CAP[state.level]}")
             return d
 
         # 升压禁止（§7.4）：连续 3 次输出无 AC → 封顶 s=2 且额外冷却
-        escalation_banned = self.st.failure_streak >= 3 and self.st.outputs_without_ac > 0
+        escalation_banned = (not simple) and self.st.failure_streak >= 3 and self.st.outputs_without_ac > 0
         if escalation_banned:
             s_eff = min(s_eff, 2)
 
@@ -204,7 +221,7 @@ class Gate:
         if self.st.tokens < 1:
             d.deny.append("令牌桶已空")
             return d
-        if self.st.outputs_without_ac >= NO_AC_CAP:
+        if (not simple) and self.st.outputs_without_ac >= NO_AC_CAP:
             d.deny.append("连续无 AC 输出达上限（强制回 display-only）")
             return d
 

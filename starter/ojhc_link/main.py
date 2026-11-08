@@ -35,6 +35,8 @@ PLUGIN_VERSION = "0.1.0"
 HARD_CAP_PCT = 90           # 代码硬上限（配置改不动；App 上限本身是最终边界）
 
 TUNING_DEFAULTS = {
+    "mode": "simple",       # simple=没 AC 才电；pressure=压力算法
+    "no_ac_minutes": 20,    # 简单模式间隔
     "base_intensity": 74,   # App 上限的百分比（s=2 档）
     "intensity_step": 4,    # 每升一档加多少
     "max_s": 4,             # 最高档位
@@ -53,7 +55,10 @@ def normalize_tuning(cfg: dict) -> dict:
             value = default
         return max(lo, min(hi, value))
 
+    mode = str(cfg.get("mode") or "simple")
     t = {
+        "mode": mode if mode in ("simple", "pressure") else "simple",
+        "no_ac_minutes": num("no_ac_minutes", 5, 120, TUNING_DEFAULTS["no_ac_minutes"]),
         "base_intensity": num("base_intensity", 40, 90, TUNING_DEFAULTS["base_intensity"]),
         "intensity_step": num("intensity_step", 0, 10, TUNING_DEFAULTS["intensity_step"]),
         "max_s": num("max_s", 2, 5, TUNING_DEFAULTS["max_s"]),

@@ -110,13 +110,13 @@ class TestGate(unittest.TestCase):
         return feedback_mod.Event("verdict.wa", 100.0, "题 B", s=s)
 
     def test_l0_never_fires(self) -> None:
-        gate = feedback_mod.Gate(self.prof, "casual")
+        gate = feedback_mod.Gate(self.prof, "casual", mode="pressure")
         dec = gate.evaluate(self._wa(), pressure_mod.PressureState(
             p=10, level=0, confidence="high"), 100.0)
         self.assertFalse(dec.would_fire)
 
     def test_l1_fires(self) -> None:
-        gate = feedback_mod.Gate(self.prof, "casual")
+        gate = feedback_mod.Gate(self.prof, "casual", mode="pressure")
         dec = gate.evaluate(self._wa(), pressure_mod.PressureState(
             p=30, level=1, confidence="high"), 100.0)
         self.assertTrue(dec.would_fire)
@@ -124,7 +124,7 @@ class TestGate(unittest.TestCase):
         self.assertEqual(dec.duration_s, feedback_mod.DURATION_S[2])
 
     def test_cooldown_blocks_second(self) -> None:
-        gate = feedback_mod.Gate(self.prof, "casual")
+        gate = feedback_mod.Gate(self.prof, "casual", mode="pressure")
         state = pressure_mod.PressureState(p=60, level=2, confidence="high")
         first = gate.evaluate(self._wa(), state, 100.0)
         second = gate.evaluate(feedback_mod.Event("verdict.tle", 120.0, "题 C", s=3),
@@ -134,7 +134,7 @@ class TestGate(unittest.TestCase):
         self.assertTrue(any("冷却" in r for r in second.deny))
 
     def test_escalation_ban_caps_s(self) -> None:
-        gate = feedback_mod.Gate(self.prof, "casual")
+        gate = feedback_mod.Gate(self.prof, "casual", mode="pressure")
         state = pressure_mod.PressureState(p=90, level=3, confidence="high")
         decisions = [gate.evaluate(feedback_mod.Event("verdict.tle", t, "B", s=4),
                                    state, float(t)) for t in (0, 200, 400, 600)]
@@ -145,7 +145,7 @@ class TestGate(unittest.TestCase):
         self.assertLessEqual(decisions[-1].s_eff, 2)
 
     def test_uncalibrated_never_fires(self) -> None:
-        dec = feedback_mod.Gate(None, "casual").evaluate(
+        dec = feedback_mod.Gate(None, "casual", mode="pressure").evaluate(
             self._wa(), pressure_mod.PressureState(p=90, level=3, confidence="high"), 0.0)
         self.assertFalse(dec.would_fire)
 
@@ -293,7 +293,7 @@ class TestReplay(unittest.IsolatedAsyncioTestCase):
         timeline = platforms_mod.load_mock(FIXTURES / "cf_1847_mock.json")
         prof = profile_mod.new_profile(20, 45, "v3", "both", "")
         result = await runner_mod.run_adapter(
-            timeline, prof, runner_mod.RunOptions(rating=1400, quiet=True),
+            timeline, prof, runner_mod.RunOptions(rating=1400, quiet=True, mode="pressure"),
             store=None, replay=True)
         self.assertGreaterEqual(len(result.events), 8)
         self.assertGreaterEqual(result.summary["would_fire"], 1)
@@ -302,3 +302,35 @@ class TestReplay(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestModes(unittest.TestCase):
+    """简单模式（默认）：只有「长时间没 AC」才电；压力模式才按算法。"""
+
+    def setUp(self) -> None:
+        self.prof = profile_mod.new_profile(20, 75, "v3", "both", "", device_max=40)
+        self.high = pressure_mod.PressureState(p=95, level=3, confidence="high")
+        self.wa = feedback_mod.Event("verdict.wa", 100.0, "B", s=2)
+        self.no_ac = feedback_mod.Event("timeout_no_ac", 100.0, "no ac", s=4)
+
+    def test_simple_denies_single_failures(self) -> None:
+        gate = feedback_mod.Gate(self.prof, "casual", mode="simple")
+        self.assertFalse(gate.evaluate(self.wa, self.high, 100.0).would_fire)
+
+    def test_simple_fires_no_ac(self) -> None:
+        gate = feedback_mod.Gate(self.prof, "casual", mode="simple")
+        dec = gate.evaluate(self.no_ac, self.high, 100.0)
+        self.assertTrue(dec.would_fire)
+        self.assertGreater(dec.intensity, 0)
+
+    def test_pressure_fires_l1_failure(self) -> None:
+        gate = feedback_mod.Gate(self.prof, "casual", mode="pressure")
+        state = pressure_mod.PressureState(p=30, level=1, confidence="high")
+        self.assertTrue(gate.evaluate(self.wa, state, 100.0).would_fire)
+
+    def test_plugin_tuning_overrides_mode(self) -> None:
+        gate = feedback_mod.Gate(self.prof, "casual", mode="simple")
+        gate.set_tuning({"mode": "pressure", "base_intensity": 80})
+        self.assertEqual(gate.mode, "pressure")
+        state = pressure_mod.PressureState(p=30, level=1, confidence="high")
+        self.assertTrue(gate.evaluate(self.wa, state, 100.0).would_fire)

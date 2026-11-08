@@ -62,6 +62,7 @@ class RunOptions:
     replay_speed: float = 0.0     # >0：把已结束比赛按 N 倍速重放（忽略实时时钟）
     dry_run: bool = True
     quiet: bool = False
+    mode: str = "simple"              # simple=没 AC 才电；pressure=压力算法
     enable_device: bool = False       # --device：本会话允许真实输出
     device_preset: str = ""           # DGHub 波形预设名（空=只改强度）
     allow_device_on_c: bool = False   # C 级数据源是否允许驱动设备（默认否）
@@ -88,7 +89,7 @@ class SessionRunner:
         self.device = device
         self.source_level = source_level
         self.cfg = pressure_config or PressureConfig()
-        self.gate = Gate(profile, options.preset, options.dry_run)
+        self.gate = Gate(profile, options.preset, options.dry_run, mode=options.mode)
         self.e_total = expected_solves(meta.problems, options.rating)
         self.no_ac_s = (options.no_ac_minutes * 60 if options.no_ac_minutes is not None
                         else min(3600.0, meta.duration_s / 2))
@@ -214,9 +215,34 @@ class SessionRunner:
                                     self.state.level, self.state.confidence)
         return self.state
 
-    # -------------------------------------------------- 时间型事件
+    # -------------------------------------------------- 模式与时间型事件
+    def _plugin_tuning(self) -> dict | None:
+        tuning = getattr(self.device, "tuning", None) if self.device else None
+        return tuning if tuning else None
+
+    def _mode(self) -> str:
+        tuning = self._plugin_tuning()
+        if tuning and tuning.get("mode") in ("simple", "pressure"):
+            return tuning["mode"]
+        return self.options.mode
+
+    def _no_ac_interval_s(self) -> float:
+        tuning = self._plugin_tuning()
+        if tuning and tuning.get("no_ac_minutes"):
+            return float(tuning["no_ac_minutes"]) * 60
+        return self.no_ac_s
+
     async def check_timeouts(self, elapsed: float) -> list[tuple[Event, Decision]]:
         out: list[tuple[Event, Decision]] = []
+        if self._mode() == "simple":
+            # 简单模式：只要「距上次 AC 超过设定时间」就电一次，之后按同样间隔重复
+            interval = self._no_ac_interval_s()
+            last_shock = getattr(self, "_last_no_ac_shock", -1e9)
+            if elapsed - self.last_ac_s > interval and elapsed - last_shock >= interval:
+                self._last_no_ac_shock = elapsed
+                await self._emit(Event("timeout_no_ac", elapsed,
+                                       f"距上次 AC {fmt_time(elapsed - self.last_ac_s)}"), out)
+            return out
         if self.no_submit_armed and elapsed - self.last_sub_s > self.options.no_submit_minutes * 60:
             self.no_submit_armed = False
             await self._emit(Event("timeout_no_submit", elapsed,
@@ -368,6 +394,8 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
         if await device.wait_client(options.device_wait_s):
             print(f"[device] 插件就绪：device={device.status.device_type or '-'} "
                   f"connected={device.status.connected}")
+            effective_mode = (device.tuning or {}).get("mode") or options.mode
+            print(f"[device] 电击模式：{'简单（长时间没 AC 才电）' if effective_mode == 'simple' else '压力算法'}")
             if device.tuning:
                 print(f"[device] 插件页面调参已生效：{device.tuning}")
         else:

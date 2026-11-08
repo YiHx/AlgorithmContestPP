@@ -11,6 +11,36 @@
   },
   "config_schema": [
     {
+      "section": "模式",
+      "fields": [
+        {
+          "key": "mode",
+          "type": "select",
+          "label": "电击模式",
+          "default": "simple",
+          "options": [
+            {
+              "label": "简单：只有长时间没有 AC 才电（默认）",
+              "value": "simple"
+            },
+            {
+              "label": "压力算法：按排名/进度/卡题程度触发",
+              "value": "pressure"
+            }
+          ],
+          "description": "简单模式只看「距上次 AC 多久」；压力算法模式看完整压力分与等级"
+        },
+        {
+          "key": "no_ac_minutes",
+          "type": "number",
+          "label": "简单模式：多久没 AC 电一次（分钟）",
+          "default": 20,
+          "min": 5,
+          "max": 120
+        }
+      ]
+    },
+    {
       "section": "连接",
       "fields": [
         {
