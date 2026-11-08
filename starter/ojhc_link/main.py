@@ -212,15 +212,8 @@ class OjhPlugin:
                     self.device_type = msg.get("device_type") or ""
                     await self.push_status()
                 elif op in ("config", "config_changed"):
-                    data = msg.get("config")
-                    if not isinstance(data, dict):
-                        data = {k: v for k, v in msg.items()
-                                if k not in ("op", "schema", "type")}
-                    if isinstance(data, dict):
-                        self.cfg.update(data)
-                        self.max_pct = int(min(int(self.cfg.get("max_intensity_pct", 90) or 90),
-                                              HARD_CAP_PCT))
-                        self.tuning = normalize_tuning(self.cfg)
+                    changed = self._handle_config_msg(msg)
+                    if changed is not None:
                         if self.engine_writer is not None:
                             await self._engine_send({"op": "tuning", "tuning": self.tuning})
                         await self._dg_log(
@@ -242,6 +235,38 @@ class OjhPlugin:
         finally:
             self.running = False
             await self.zero_device("dghub disconnected")
+
+    def _handle_config_msg(self, msg: dict) -> dict | None:
+        """解析 DGHub 的 config / config_changed 消息（协议见 dev-guide §8.2）。
+
+        config:        {"op": "config", "data": {key: value, ...}}
+        config_changed:{"op": "config_changed", "key": "xxx", "value": ...}
+        """
+        op = msg.get("op")
+        if op == "config":
+            data = msg.get("data")
+            if not isinstance(data, dict):
+                data = msg.get("config")
+            if not isinstance(data, dict):
+                return None
+            self._apply_config(data)
+            return data
+        if op == "config_changed":
+            key = msg.get("key")
+            if not key:
+                return None
+            self._apply_config({str(key): msg.get("value")})
+            return {str(key): msg.get("value")}
+        return None
+
+    def _apply_config(self, data: dict) -> None:
+        if not isinstance(data, dict):
+            return
+        for key, value in data.items():
+            self.cfg[key] = value
+        self.max_pct = int(min(int(self.cfg.get("max_intensity_pct", 90) or 90),
+                              HARD_CAP_PCT))
+        self.tuning = normalize_tuning(self.cfg)
 
     async def push_status(self) -> None:
         if not self.cfg.get("show_status", True):
@@ -598,6 +623,17 @@ def selftest() -> int:
     p = OjhPlugin(manifest)
     if p.max_pct > HARD_CAP_PCT:
         problems.append("max_pct 超过硬上限")
+    # 配置消息协议（dev-guide §8.2）
+    p._handle_config_msg({"op": "config", "data": {
+        "auto_start_engine": True, "engine_url": "https://codeforces.com/contest/1",
+        "engine_handle": "tester", "max_intensity_pct": 95}})
+    if not p.cfg.get("auto_start_engine") or p.cfg.get("max_intensity_pct") != 95:
+        problems.append(f"config 消息解析失败：{p.cfg.get('auto_start_engine')}")
+    p._handle_config_msg({"op": "config_changed", "key": "engine_device", "value": False})
+    if p.cfg.get("engine_device") is not False:
+        problems.append("config_changed 消息解析失败")
+    if p._build_engine_args() is None:
+        problems.append("启动器参数构造失败")
     cands = candidate_link_files(p.cfg)
     print(f"  plugin root = {PLUGIN_ROOT}")
     print(f"  max_pct = {p.max_pct}（硬上限 {HARD_CAP_PCT}）")
