@@ -118,6 +118,8 @@ DESIGN.md        设计文档 v0.3.x（算法 / 安全 / 手感 / 里程碑）
 
 ## 许可与致谢
 
-- 本仓库计划采用 **AGPL-3.0**（与 DGHub SDK 生态一致；如无异议以此为准）。
+- 本仓库采用 **MIT License**（见 [LICENSE](LICENSE)）。可自由使用、修改、分发（含商业用途），请保留版权声明；使用风险自负。
+- 本仓库**没有** import / vendor DGHub SDK 或官方 demo 代码（协议按公开文档独立实现），因此不继承 AGPLv3；若以后引入 AGPL 代码会单独说明。
+- DG-Lab 公开的协议文档写明"商业使用需授权"，本仓库不包含其文档或示例代码，仅做非商业用途参考。
 - 感谢 [DGHub](http://dghub.top/) 与 [DG-Lab](https://github.com/DG-LAB-OPENSOURCE) 提供设备与插件生态，感谢 Codeforces 公开 API。
 - 项目名称中的 "DGHub" 仅表示集成对象，不代表官方关系。

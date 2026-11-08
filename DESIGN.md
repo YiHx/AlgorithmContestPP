@@ -1060,7 +1060,7 @@ Step 4 手感预览
 - `status` 支持 `display_status` 与 `startup_check`（配置页显示"启动检查"步骤）→ 可直接拿来做"引擎连接 / 设备 / 校准"三态显示；
 - `entry="main.py"` 用本机 Python 跑；`entry="xxx.exe"` 直接 Popen（Go/Rust/C# 都行）；Node 建议用 `.bat` 包一层。
 
-**许可边界**：SDK 是 AGPLv3 → 本插件仓库选择 **AGPL-3.0** 保持兼容；DG-Lab 协议仓库 README 明确"未经授权请勿用于商业用途"且根目录无 LICENSE 文件 → 项目定位为非商业开源（§13.2）。
+**许可边界**：SDK 是 AGPLv3，但本仓库**不 import / vendor SDK 或官方 demo 代码**（协议按公开文档独立实现）→ 仓库采用 **MIT**（LICENSE 已就位），不继承 AGPLv3；若以后引入 SDK 再单独说明许可变化。DG-Lab 协议仓库 README 明确"未经授权请勿用于商业用途"且根目录无 LICENSE 文件 → 项目保持非商业用途，不打包其文档/示例（§13.2）。
 
 ### 9.1 职责边界（单一职责）
 
@@ -1334,7 +1334,7 @@ MVP **必须包含设备与校准**（这是核心目的），不含 AtCoder/牛
 
 1. **设备安全**：必须完成校准才能开输出；每场一次确认；11 条闸门；硬上限；死手开关；急停。
 2. **平台 ToS**：优先使用官方 API；无官方 API 的平台通过浏览器在**用户已登录的页面**内取数（用户自己的会话，不代登录、不破解风控、不批量爬取他人数据）。
-3. **DG-Lab 协议授权**：DG-Lab 协议仓库 README 明确"未经授权，请勿将本内容用于任何商业用途"（英文版同义），且根目录**没有 LICENSE 文件** → 本项目定位为**非商业开源**。DGHub SDK 为 **AGPLv3** → 插件仓库采用 AGPL-3.0 保持兼容并公开源码。
+3. **DG-Lab 协议授权**：DG-Lab 协议仓库 README 明确"未经授权，请勿将本内容用于任何商业用途"（英文版同义），且根目录**没有 LICENSE 文件** → 本项目定位为**非商业用途**，不打包其文档/示例代码。DGHub SDK 为 **AGPLv3**，但本仓库未使用其代码（协议独立实现），故仓库采用 **MIT**（见 LICENSE）。
 4. **数据隐私**：只保存自己的提交与榜单；不上传云端；日志本地保留 30 天。
 5. **DGHub 侧插件叠加**：设备强度取所有插件层的最大值，本插件**无法阻止其它插件在同一设备上输出** → README 与面板必须提示"使用时只启用本插件"；急停仍然覆盖全部。
 6. **分发完整性**：DGHub 外部插件是手动导入 zip、无审核无签名 → 发布包附 SHA-256 校验值与官方下载地址。
@@ -1423,6 +1423,7 @@ MVP **必须包含设备与校准**（这是核心目的），不含 AtCoder/牛
 | v0.3.2 | **CLI-first 明确化**：新增 §9.7（Engine 是 CLI，插件无界面，DGHub 只做设备后端）、配置来源优先级（CLI > Engine 配置 > DGHub 配置页）、`install_plugin.ps1` 纯 CLI 安装、插件 CLI 参数覆盖（`--armed/--intensity/--duration/--preset/--channel/--fire-now`） |
 | v0.3.3 | M1 落地：交付 `engine/` 下 `ojhc` CLI（`doctor`/`calibrate`/`status`/`selftest`）；修正 §7.3 强度映射区间为 `[I_p, user_max]`（原 `[I_p, I_c]` 会把高档压成同一值），§7.9.1 增加 `user_max − I_p ≥ 10%` 校验；§12.2 记录 M1 进度 |
 | v0.3.4 | M2 代码落地（待审阅）：`pressure.py` / `cf.py` / `feedback.py` / `runner.py` + `ojhc run --mock`；selftest 增加"§5.6 数值回归 / 闸门映射 / 离线回放"三项；记录 live 模式未验证、罚时未参与、夹具为合成数据等限制 |
+| v0.3.5 | 仓库初始化与许可落地：采用远端初始提交的 **MIT LICENSE**；README 与 §9.0 / §13.2 的许可说明同步为 MIT（本项目不 import/vendor AGPL 的 SDK 代码）；建立 3 个功能提交并推送到 GitHub |
 
 ---
 
