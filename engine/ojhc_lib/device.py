@@ -74,10 +74,18 @@ class DeviceLink:
 
     # -------------------------------------------------- 生命周期
     async def start(self) -> str:
-        self._server = await asyncio.start_server(self._handle_client, self.host, self.port)
-        sockets = self._server.sockets or []
-        if sockets:
-            self.port = sockets[0].getsockname()[1]
+        last_error = None
+        for candidate in [self.port] + [p for p in range(8769, 8781) if p != self.port]:
+            try:
+                self._server = await asyncio.start_server(
+                    self._handle_client, self.host, candidate)
+                self.port = candidate
+                break
+            except OSError as exc:
+                last_error = exc
+                continue
+        if self._server is None:
+            raise OSError(f"设备链路端口全部被占用：{last_error}")
         self._renew_task = asyncio.create_task(self._renew_loop())
         return f"tcp://{self.host}:{self.port}"
 

@@ -452,7 +452,12 @@ class OjhPlugin:
         if self._engine_proc is not None:
             if self._engine_proc.poll() is None:
                 return
-            self._launch_attempted = False      # 引擎已退出 → 允许重试
+            if not getattr(self, "_logged_engine_exit", False):
+                self._logged_engine_exit = True
+                await self._dg_log(
+                    "启动器：引擎已退出（窗口里的错误可查看）；改配置或重载插件可重试",
+                    "warning")
+            return
         if self._launch_attempted:
             if not getattr(self, "_logged_attempted", False):
                 self._logged_attempted = True
@@ -468,14 +473,25 @@ class OjhPlugin:
             await self._dg_log("启动器：URL/用户名未填，或找不到引擎目录（ojhC.py 所在目录）", "warning")
             return
         flags = 0
+        spawn_args = args
         if os.name == "nt":
             flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+            log_dir = engine_dir / ".local"
+            try:
+                log_dir.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
+            log_path = log_dir / "launcher_last.log"
+            command = (f'"{args[0]}" ' + " ".join(args[1:])
+                       + f' > "{log_path}" 2>&1')
+            spawn_args = ["cmd.exe", "/k", command]
         try:
             self._engine_proc = subprocess.Popen(
-                args, cwd=str(engine_dir), creationflags=flags)
+                spawn_args, cwd=str(engine_dir), creationflags=flags)
             self._launch_attempted = True
             self._launch_dirty = False
-            await self._dg_log("启动器：已打开引擎终端 → " + " ".join(args[2:]))
+            await self._dg_log("启动器：已打开引擎终端 → " + " ".join(args[2:])
+                               + f"（日志：engine/.local/launcher_last.log）")
         except Exception as exc:  # noqa: BLE001
             await self._dg_log(f"启动器：启动引擎失败：{exc}", "warning")
 
