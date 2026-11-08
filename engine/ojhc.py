@@ -176,7 +176,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             info_dev = device_mod_device_info(args.host, args.port)
             dev_max = int(info_dev.get("max_strength_A") or 0) or int(prof.device_max or 0) or 40
             prof = profile_mod.new_profile(
-                20, 75, str(info_dev.get("device_type") or "v3"),
+                35, 100, str(info_dev.get("device_type") or "v3"),
                 prof.channel or "both", prof.preset or "呼吸", device_max=dev_max)
             profile_source = "app-limit"
             print(info(f"无校准模式：设备上限 {dev_max}，输出范围 = 上限的 "
