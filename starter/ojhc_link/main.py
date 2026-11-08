@@ -147,6 +147,7 @@ class OjhPlugin:
         self.rejected = 0
         self._engine_proc = None          # 由插件启动的引擎子进程
         self._launch_attempted = False
+        self._launch_dirty = False        # 启动参数变更，需要重启引擎
 
     # -------------------------------------------------- DGHub
     async def connect_dghub(self) -> None:
@@ -259,10 +260,15 @@ class OjhPlugin:
             return {str(key): msg.get("value")}
         return None
 
+    LAUNCH_KEYS = ("engine_url", "engine_handle", "engine_device",
+                   "engine_virtual", "engine_python", "engine_dir")
+
     def _apply_config(self, data: dict) -> None:
         if not isinstance(data, dict):
             return
         for key, value in data.items():
+            if key in self.LAUNCH_KEYS and self.cfg.get(key) != value:
+                self._launch_dirty = True
             self.cfg[key] = value
         self.max_pct = int(min(int(self.cfg.get("max_intensity_pct", 90) or 90),
                               HARD_CAP_PCT))
@@ -426,6 +432,21 @@ class OjhPlugin:
         """按插件页配置启动引擎（新终端窗口）。失败会写到 DGHub 运行日志。"""
         if not self.cfg.get("auto_start_engine", False):
             return
+        force = False
+        # 启动参数（URL/handle/设备/虚拟）变更 → 重启由插件拉起的引擎
+        if (self._launch_dirty and self._engine_proc is not None
+                and self._engine_proc.poll() is None):
+            await self._dg_log("启动器：启动参数已变更，重启引擎终端…")
+            try:
+                self._engine_proc.terminate()
+            except Exception:
+                pass
+            self._engine_proc = None
+            self._launch_attempted = False
+            self._launch_dirty = False
+            self.engine_reader = None
+            self.engine_writer = None
+            force = True
         if self.engine_writer is not None:      # 引擎已经连上
             return
         if self._engine_proc is not None:
@@ -438,7 +459,7 @@ class OjhPlugin:
                 await self._dg_log("启动器：本次已尝试启动引擎，等待它连接…")
             return
         now = time.monotonic()
-        if now - getattr(self, "_last_launch_try", 0.0) < 10.0:
+        if not force and now - getattr(self, "_last_launch_try", 0.0) < 10.0:
             return
         self._last_launch_try = now
         args = self._build_engine_args()
@@ -453,7 +474,8 @@ class OjhPlugin:
             self._engine_proc = subprocess.Popen(
                 args, cwd=str(engine_dir), creationflags=flags)
             self._launch_attempted = True
-            await self._dg_log(f"启动器：已打开引擎终端（{args[0]} ojhC.py run …）")
+            self._launch_dirty = False
+            await self._dg_log("启动器：已打开引擎终端 → " + " ".join(args[2:]))
         except Exception as exc:  # noqa: BLE001
             await self._dg_log(f"启动器：启动引擎失败：{exc}", "warning")
 
