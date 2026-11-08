@@ -325,9 +325,9 @@ class OjhPlugin:
             except asyncio.TimeoutError:
                 line = None
             if line == b"":
-                await self._dg_log("Engine 断开，设备归零后退出", "warning")
+                # 不退出：归零后回到等待，下一场 Engine 启动可直接复用
+                await self._dg_log("Engine 已断开，设备归零，回到等待", "warning")
                 await self.zero_device("engine disconnected")
-                self.running = False
                 return
             if line:
                 try:

@@ -292,6 +292,10 @@ async def _replay_paced(adapter: PlatformAdapter, runner: SessionRunner,
         subs.extend(batch)
         cursor = batch[-1].sid
     print(f"[replay] 已取到 {len(subs)} 条提交，按 {options.replay_speed:g}× 倍速重放")
+    if not subs:
+        print("[replay] 警告：这场比赛没有该 handle 的提交。"
+              "检查 --handle 拼写，或换一场你真的参加过的比赛。")
+        return runner.finalize()
     prev_rel = 0.0
     for sub in subs:
         delay = max(0.0, sub.rel_s - prev_rel) / options.replay_speed

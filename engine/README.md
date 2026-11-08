@@ -190,3 +190,5 @@ python -c "import json,urllib.request;req=urllib.request.Request('http://127.0.0
 ```
 
 若仍无感：先看 DGHub 显示的设备上限（`max_a`），在 DG-Lab App 里把「上限」适当调高再校准。
+
+> 用 `--replay-speed` 重放已结束比赛时，`--handle` 必须是**真的参加过那场比赛**的账号，否则会取到 0 条提交。
