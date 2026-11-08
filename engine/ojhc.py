@@ -217,6 +217,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         max_run_s=(args.max_run_min * 60 if args.max_run_min else None),
         replay_speed=args.replay_speed,
         mode=args.mode,
+        virtual=args.virtual,
         enable_device=enable_device,
         device_preset=(args.device_preset if args.device_preset is not None
                        else (prof.preset or "")),
@@ -666,6 +667,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--preset", choices=["casual", "hardcore"], default="casual")
     p_run.add_argument("--mode", choices=["simple", "pressure"], default="simple",
                        help="simple=只有长时间没 AC 才电（默认）；pressure=压力算法")
+    p_run.add_argument("--virtual", action="store_true",
+                       help="虚拟参赛/手动开始：从启动时刻开始计时（CF Virtual participation 用）")
     p_run.add_argument("--speed", type=float, default=0.0, help="回放加速倍数（0=瞬时）")
     p_run.add_argument("--no-submit-minutes", type=float, default=30.0)
     p_run.add_argument("--no-ac-minutes", type=float, default=None, help="简单模式：多久没 AC 电一次（分钟，默认 20）")

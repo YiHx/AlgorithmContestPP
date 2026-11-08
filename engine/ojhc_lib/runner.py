@@ -63,6 +63,7 @@ class RunOptions:
     dry_run: bool = True
     quiet: bool = False
     mode: str = "simple"              # simple=没 AC 才电；pressure=压力算法
+    virtual: bool = False             # 虚拟参赛/手动开始：从"现在"开始计时
     enable_device: bool = False       # --device：本会话允许真实输出
     device_preset: str = ""           # DGHub 波形预设名（空=只改强度）
     allow_device_on_c: bool = False   # C 级数据源是否允许驱动设备（默认否）
@@ -473,7 +474,7 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
                 runner.print_line(ev, dec)
             return runner.finalize()
 
-        start = meta.start_ts or time.time()
+        start = time.time() if options.virtual else (meta.start_ts or time.time())
         limit_s = meta.duration_s if options.max_run_s is None else min(meta.duration_s, options.max_run_s)
 
         # 已结束的比赛：按倍速重放（用提交自带的 relativeTimeSeconds，不依赖实时时钟）
