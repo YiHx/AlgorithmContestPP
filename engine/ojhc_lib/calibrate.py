@@ -196,10 +196,10 @@ async def run_calibration(host: str, port: int, token: str, *,
                                        device_max=client.device.max_strength_a or 0)
         distinguishable = await _step_preview(client, prompter, preset, channel, dry_run, fast, prof)
 
-        path = profile_mod.save_profile(prof, base_dir)
         if dry_run:
             print("\n" + ok(f"dry-run 完成（未写档案）：I_p={perceptible}%  I_c={comfort}%  本次上限={user_max}%"))
             return 0
+        path = profile_mod.save_profile(prof, base_dir)
         print("\n" + ok(f"校准完成：I_p={perceptible}%  I_c={comfort}%  本次上限={user_max}%"))
         if not distinguishable:
             print(warn("三档分辨度不理想：可以换个波形预设或通道再校准一次（旧档案会被覆盖）"))
