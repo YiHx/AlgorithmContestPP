@@ -191,7 +191,7 @@ class TestPlatforms(unittest.TestCase):
         self.assertEqual(parsed["solved"], 1)   # score>0 的题数
 
     def test_vjudge_duration_units(self) -> None:
-        from ojhC_lib.platforms import vjudge as vj
+        from ojhc_lib.platforms import vjudge as vj
         self.assertEqual(vj._duration_seconds(14100000), 14100.0)   # 毫秒（实测格式）
         self.assertEqual(vj._duration_seconds(7200), 7200.0)        # 秒
         self.assertEqual(vj._duration_seconds(120), 7200.0)         # 分钟（旧格式）
