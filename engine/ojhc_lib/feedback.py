@@ -50,8 +50,9 @@ HOURLY_CAP = 30
 
 # 插件页面可调参数（Engine 端再钳一次，硬边界不可绕过）
 TUNING_DEFAULTS = {
-    "mode": "simple",            # simple=只有长时间没 AC 才电；pressure=压力算法
+    "mode": "simple",            # simple=单次失败也电 + 没 AC 超时递增；pressure=压力算法
     "no_ac_minutes": 20,         # 简单模式下：多久没 AC 电一次
+    "no_ac_escalation": 5,       # 每次"没 AC"电击比上一次加多少（% of App 上限），封顶 90%
     "base_intensity": 74, "intensity_step": 4, "max_s": 4,
     "cooldown_s": 90, "hourly_cap": 30, "allow_level_up": False, "preset": "呼吸",
 }
@@ -74,10 +75,11 @@ def normalize_tuning(raw: dict | None) -> dict | None:
     return {
         "mode": mode,
         "no_ac_minutes": num("no_ac_minutes", 5, 120, 20),
+        "no_ac_escalation": num("no_ac_escalation", 0, 20, 5),
         "base_intensity": num("base_intensity", 40, 90, 74),
         "intensity_step": num("intensity_step", 0, 10, 4),
         "max_s": num("max_s", 2, 5, 4),
-        "cooldown_s": num("cooldown_s", 30, 300, 90),
+        "cooldown_s": num("cooldown_s", 10, 300, 90),
         "hourly_cap": num("hourly_cap", 5, 60, 30),
         "allow_level_up": bool(raw.get("allow_level_up", False)),
         "preset": str(raw.get("preset") or "呼吸")[:32],
@@ -175,9 +177,6 @@ class Gate:
         # 事件本身是否要输出
         if event.kind == "level_up" and not allow_level_up:
             d.deny.append(f"level_up 事件在 {self.preset_name} 预设下关闭")
-            return d
-        if simple and event.kind != "timeout_no_ac":
-            d.deny.append("简单模式：只有「长时间没有 AC」才电")
             return d
         if event.s <= 0:
             d.deny.append("纯展示事件（无输出）")

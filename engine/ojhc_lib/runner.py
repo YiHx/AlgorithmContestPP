@@ -103,6 +103,7 @@ class SessionRunner:
         self.recent: list[tuple[float, float]] = []   # (score, rel_s)
         self.no_submit_armed = True
         self.no_ac_armed = True
+        self._no_ac_shocks = 0
         self.result = RunResult(session_id=session_id)
         self.degraded: list[str] = []
         self._last_snapshot_rel: float | None = None
@@ -130,6 +131,7 @@ class SessionRunner:
             self.streak_fail = 0
             self.no_ac_armed = True
             self.gate.note_ac()
+            self._no_ac_shocks = 0
         elif kind in ("verdict.tle", "verdict.mle", "verdict.re", "verdict.wa",
                       "verdict.partial"):
             self.streak_fail += 1
@@ -153,10 +155,16 @@ class SessionRunner:
             base = int(plugin_tuning.get("base_intensity", 74))
             step = int(plugin_tuning.get("intensity_step", 4))
             tuned = base + (max(0, decision.s_eff) - 2) * step
+            if event.kind == "timeout_no_ac":
+                # 没 AC 的电击逐次加强，封顶在 90%（App 上限的 90%）
+                esc = int(plugin_tuning.get("no_ac_escalation", 5))
+                tuned += min(self._no_ac_shocks, 20) * esc
             decision.intensity = int(max(0, min(round(tuned), profile_mod.HARD_CAP_PCT)))
             if decision.intensity <= 0:
                 decision.would_fire = False
                 decision.deny = ["插件调参后强度为 0"]
+            elif event.kind == "timeout_no_ac":
+                self._no_ac_shocks += 1
 
         # 真实输出：闸门 would_fire + 本会话显式启用 + 设备链路可用
         if decision.would_fire and self.options.enable_device:

@@ -313,9 +313,9 @@ class TestModes(unittest.TestCase):
         self.wa = feedback_mod.Event("verdict.wa", 100.0, "B", s=2)
         self.no_ac = feedback_mod.Event("timeout_no_ac", 100.0, "no ac", s=4)
 
-    def test_simple_denies_single_failures(self) -> None:
+    def test_simple_allows_single_failures(self) -> None:
         gate = feedback_mod.Gate(self.prof, "casual", mode="simple")
-        self.assertFalse(gate.evaluate(self.wa, self.high, 100.0).would_fire)
+        self.assertTrue(gate.evaluate(self.wa, self.high, 100.0).would_fire)
 
     def test_simple_fires_no_ac(self) -> None:
         gate = feedback_mod.Gate(self.prof, "casual", mode="simple")

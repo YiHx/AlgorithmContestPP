@@ -35,8 +35,9 @@ PLUGIN_VERSION = "0.1.0"
 HARD_CAP_PCT = 90           # 代码硬上限（配置改不动；App 上限本身是最终边界）
 
 TUNING_DEFAULTS = {
-    "mode": "simple",       # simple=没 AC 才电；pressure=压力算法
+    "mode": "simple",       # simple=单次失败也电 + 没 AC 递增；pressure=压力算法
     "no_ac_minutes": 20,    # 简单模式间隔
+    "no_ac_escalation": 5,  # 每次没 AC 电击递增
     "base_intensity": 74,   # App 上限的百分比（s=2 档）
     "intensity_step": 4,    # 每升一档加多少
     "max_s": 4,             # 最高档位
@@ -59,10 +60,11 @@ def normalize_tuning(cfg: dict) -> dict:
     t = {
         "mode": mode if mode in ("simple", "pressure") else "simple",
         "no_ac_minutes": num("no_ac_minutes", 5, 120, TUNING_DEFAULTS["no_ac_minutes"]),
+        "no_ac_escalation": num("no_ac_escalation", 0, 20, TUNING_DEFAULTS["no_ac_escalation"]),
         "base_intensity": num("base_intensity", 40, 90, TUNING_DEFAULTS["base_intensity"]),
         "intensity_step": num("intensity_step", 0, 10, TUNING_DEFAULTS["intensity_step"]),
         "max_s": num("max_s", 2, 5, TUNING_DEFAULTS["max_s"]),
-        "cooldown_s": num("cooldown_s", 30, 300, TUNING_DEFAULTS["cooldown_s"]),
+        "cooldown_s": num("cooldown_s", 10, 300, TUNING_DEFAULTS["cooldown_s"]),
         "hourly_cap": num("hourly_cap", 5, 60, TUNING_DEFAULTS["hourly_cap"]),
         "allow_level_up": bool(cfg.get("allow_level_up", TUNING_DEFAULTS["allow_level_up"])),
         "preset": str(cfg.get("preset") or TUNING_DEFAULTS["preset"])[:32],

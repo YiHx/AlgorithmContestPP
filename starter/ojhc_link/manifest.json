@@ -37,8 +37,18 @@
           "default": 20,
           "min": 5,
           "max": 120
+        },
+        {
+          "key": "no_ac_escalation",
+          "type": "percent",
+          "label": "每次「没 AC」电击比上次加强多少",
+          "default": 5,
+          "min": 0,
+          "max": 20,
+          "description": "逐次递增，封顶 90%（App 上限的 90%）"
         }
-      ]
+      ],
+      "description": "简单模式：单次 WA/TLE/RE 会电（按档位强度）；长时间没 AC 会按间隔电并逐次加强"
     },
     {
       "section": "连接",
@@ -95,7 +105,7 @@
           "type": "number",
           "label": "两次电击最小间隔（秒）",
           "default": 90,
-          "min": 30,
+          "min": 10,
           "max": 300
         },
         {
