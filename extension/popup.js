@@ -1,4 +1,4 @@
-// OJHC Bridge - popup
+// 算法竞赛++ 浏览器桥接 - popup
 const statusEl = document.getElementById("status");
 const detailEl = document.getElementById("detail");
 

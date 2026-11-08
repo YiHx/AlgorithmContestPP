@@ -1,4 +1,4 @@
-// OJHC Bridge - content script
+// 算法竞赛++ 浏览器桥接 - content script
 // 在已登录的 AtCoder / 洛谷 / 牛客 页面上下文里 fetch 平台数据，交给 background 转发给本机 Engine。
 // 设计约束（research/platform-endpoints-v2.md）：
 //   * 每平台 3s 节流，失败指数退避；数据缺失就显式降级，不猜

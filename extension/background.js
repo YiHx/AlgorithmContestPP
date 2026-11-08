@@ -1,4 +1,4 @@
-// OJHC Bridge - background service worker
+// 算法竞赛++ 浏览器桥接 - background service worker
 // 职责：发现本机 Engine（127.0.0.1:8765..8774）、缓存会话 token、代 content script 发 POST。
 // 为什么由 background 发请求：HTTPS 页面里 fetch http://127.0.0.1 属于混合内容，
 // 而扩展的 service worker 不受页面混合内容限制。
