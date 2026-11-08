@@ -483,11 +483,11 @@ class OjhPlugin:
                 pass
             log_path = log_dir / "launcher_last.log"
             bat_path = log_dir / "launch_engine.bat"
-            # 用 .bat 启动，避免 cmd 引号转义问题；pause 让错误窗口停留
+            # 用 .bat 启动，避免 cmd 引号转义问题；输出直接显示在窗口里
             bat = (
                 "@echo off\r\n"
                 f'cd /d "{engine_dir}"\r\n'
-                f'"{args[0]}" ' + " ".join(args[1:]) + f' > "{log_path}" 2>&1\r\n'
+                f'"{args[0]}" ' + " ".join(args[1:]) + "\r\n"
                 "echo.\r\n"
                 "echo [engine exited] press any key to close\r\n"
                 "pause >nul\r\n"
