@@ -160,3 +160,11 @@ Step 5  写入 ~/.ojhc/device_profile.json
 - DGHub 端口自动探测只扫常见端口（27020~27023、27800）；找不到时用 `--port` 指定；
 - 设备未连接时校准会拒绝开始（返回码 3）；
 - 死手开关（lease）留给 M1 正式桥接阶段，当前 `calibrate` 是"人在旁边盯着"的交互式流程。
+
+## 测试
+
+```powershell
+cd engine
+python -m unittest discover -s tests -v    # 19 例，纯标准库
+python ojhC.py selftest                    # 冒烟级自检（含设备链路）
+```

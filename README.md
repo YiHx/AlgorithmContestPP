@@ -129,3 +129,51 @@ DESIGN.md        设计文档 v0.3.x（算法 / 安全 / 手感 / 里程碑）
 - DG-Lab 公开的协议文档写明"商业使用需授权"，本仓库不包含其文档或示例代码，仅做非商业用途参考。
 - 感谢 [DGHub](http://dghub.top/) 与 [DG-Lab](https://github.com/DG-LAB-OPENSOURCE) 提供设备与插件生态，感谢 Codeforces 公开 API。
 - 项目名称中的 "DGHub" 仅表示集成对象，不代表官方关系。
+
+## 真机验收清单（交付给设备持有者）
+
+代码已全部推送（v0.3.9），下面是**你需要亲自验证的部分**（我这边无设备/无外网，无法替代）：
+
+### A. 设备链路（最关键）
+
+```powershell
+# 1) 装生产插件并重启 DGHub
+.\starter\install_plugin.ps1 -Plugin ojhc_link
+# 2) 校准（3~5 分钟，出 I_p / I_c）
+cd engine
+python ojhC.py doctor
+python ojhC.py calibrate
+# 3) 用回放数据做一次"真输出"演练（不需要真比赛）
+python ojhC.py run --mock --device --max-run-min 1
+```
+
+预期：插件连上 Engine、租约刷新；回放里通过闸门的事件会真的输出（约 4 次，26~28% / 0.8~1.2s）；
+中途 Ctrl+C → 插件立即归零并退出。
+
+### B. 各平台真实比赛
+
+| 平台 | 命令 | 预期 |
+|---|---|---|
+| CF | `python ojhC.py run --url https://codeforces.com/contest/<id> --handle <you> [--device]` | 实时判题与榜单 |
+| VJudge | `python ojhC.py run --url https://vjudge.net/contest/<id> --handle <you> [--device]` | 判题实时；榜单自算 |
+| AtCoder | `python ojhC.py run --url https://atcoder.jp/contests/<id> --handle <you>` + 扩展 | 登录态下判题+榜单；默认不出电 |
+| 洛谷 | `python ojhC.py run --url https://www.luogu.com.cn/contest/<id> --handle <you>` + 扩展 | v1 只上报榜单（判题待 record/list 映射） |
+| 牛客 | `python ojhC.py run --url https://ac.nowcoder.com/acm/contest/<id> --handle <you>` + 扩展 | 判题事件；无榜单（自动降级） |
+
+### C. 回归测试
+
+```powershell
+cd engine
+python -m unittest discover -s tests -v   # 19 例，应全 OK
+python ojhC.py selftest
+python ojhC.py sessions
+python ojhC.py report --session <id>
+```
+
+### D. 已知限制（不是 bug，先记录）
+
+- 洛谷 v1 只有榜单、没有判题事件（`record/list` 状态码映射未核实，不猜）；
+- 牛客没有榜单接口（只有提交信号）；
+- AtCoder 封榜按场次声明，`Frozen` 标记来自第三方整理的字段，可能漂移；
+- VJudge 封榜无法从 JSON 判定，用"末 60 分钟保守视为封榜"的启发式；
+- CF/VJudge live 模式未在本机网络下验证过（开发沙箱无外网），首次跑请留意报错并回报。
