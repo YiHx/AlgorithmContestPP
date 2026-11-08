@@ -97,8 +97,8 @@ class CodeforcesAdapter:
             if after_id is not None and sid <= after_id:
                 continue
             rel_s = float(item.get("relativeTimeSeconds") or 0)
-            if duration_s and rel_s > duration_s:   # CF 对赛外提交返回 INT_MAX
-                rel_s = float(duration_s)
+            if duration_s and rel_s > duration_s:   # CF 对赛外提交返回 INT_MAX，直接忽略
+                continue
             out.append(Submission(
                 sid=str(sid),
                 rel_s=rel_s,
