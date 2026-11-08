@@ -50,10 +50,12 @@ OJ（Codeforces ...） → Contest Engine（压力分 + 安全闸门） → DGHu
 | 引擎 CLI：`doctor` / `calibrate` / `status` / `selftest` | ✅ 干跑验证通过（真机待验证） |
 | 手感校准（测 `I_p` / `I_c`，映射档位） | ✅ 已实现 |
 | 压力分引擎（4 子分 / 平滑 / 滞回） | ✅ 已实现，与 DESIGN.md §5.6 数值一致 |
+| 多平台适配层（CF / VJudge） | ✅ P1：CF 完整；VJudge 判题可用、榜单降级 |
+| SQLite 会话历史 + 赛后复盘（`sessions` / `report`） | ✅ 已实现 |
 | 离线回放 + 闸门模拟（`ojhc run --mock`） | ✅ 已实现（打印 would-fire） |
 | Codeforces 实时判题/榜单 | 🟡 live 代码路径已写，未在真实网络验证 |
+| AtCoder / 洛谷 / 牛客 | ⏳ P2（浏览器扩展在登录态页面取数） |
 | 真实设备输出（DGHub `trigger`） | ⛔ M4（当前全部 dry-run） |
-| 多平台（VJudge / AtCoder / 洛谷 / 牛客） | ⛔ 第二阶段 |
 | Linux / macOS | ⛔ 不支持（DGHub 主程序是 Windows 应用） |
 
 > 诚实说明：**目前没有任何一次真实设备验证**。代码按 DGHub 协议文档实现，正在等真机校准。

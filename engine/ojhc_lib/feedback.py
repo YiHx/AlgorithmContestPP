@@ -26,6 +26,7 @@ EVENT_S = {
     "verdict.mle": 3,
     "verdict.re": 3,
     "verdict.ce": 0,
+    "verdict.partial": 2,
     "timeout_no_submit": 3,
     "timeout_no_ac": 4,
     "level_up": 0,

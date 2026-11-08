@@ -11,43 +11,57 @@ pip install websockets
 > 只用这一个第三方依赖；其余全是标准库。`websockets` 只在真正连 DGHub 时需要，
 > 跑 `selftest` / `calibrate --dry-run` 不需要。
 
-## 五个命令
+## 常用命令
 
 ```powershell
 cd engine
 
-# 1) 自检：DGHub 端口 / 握手 / 设备 / 校准档案 / 冒烟插件
-python ojhC.py doctor
-
-# 2) 校准向导（需要 DGHub 在运行 + 设备已连接）
-python ojhC.py calibrate
-
-# 3) 离线干跑（不输出任何电流，用脚本答案自动走完，便于测试流程）
+# 环境与校准
+python ojhC.py doctor                 # DGHub 端口 / 握手 / 设备 / 档案 / 插件
+python ojhC.py calibrate              # 校准向导（需要设备已连接）
 python ojhC.py calibrate --dry-run --fast --script "y,n,n,n,y,y,y,y,y,y,y,y,n,y"
+python ojhC.py status                 # 档案与档位映射
 
-# 4) 看当前档案与档位映射
-python ojhC.py status
+# 比赛回放 / 实跑（多平台）
+python ojhC.py run --mock --rating 1400          # 内置 CF 夹具，零网络
+python ojhC.py run --url https://codeforces.com/contest/1847 --handle <handle>
+python ojhC.py run --platform vjudge --contest 654321 --handle <handle> --duration-min 120
 
-# 5) 会话回放（M2）：离线夹具跑完整流水线，打印"如果启用设备会打多强"
-python ojhC.py run --mock --rating 1400
-python ojhC.py run --mock --preset hardcore --json
-python ojhC.py run --contest 1847 --handle <你的handle>   # live（需要网络）
+# 历史与复盘
+python ojhC.py sessions               # 历史会话列表
+python ojhC.py report --session 3     # 事件时间线 + 压力曲线 + 降级信息
 
-# 6) 纯本地自检（不联网）
-python ojhC.py selftest
+# 自检
+python ojhC.py selftest               # 不联网，覆盖压力/闸门/回放/存储
 ```
+
+## 多平台适配层（P1）
+
+```
+engine/ojhc_lib/platforms/
+    base.py        ContestMeta / Submission / Standings / Capabilities / PlatformAdapter
+    codeforces.py  CF 官方 API（A 级，实时判题 + 榜单 + 封榜）
+    vjudge.py      VJudge 非官方接口（B 级，实时判题；榜单接口待核实 → 降级）
+    mock.py        离线回放夹具（任何平台都能用同一套接口）
+```
+
+引擎只依赖 `base.py` 的四个模型，不认识具体 OJ。平台能力缺失时自动降级，
+并在 `summary["degraded"]` 与 `report` 里明示——不猜数据。
+
+- 平台识别：`--url` 支持五平台 URL（CF / VJudge / AtCoder / 洛谷 / 牛客）；
+  AtCoder/洛谷/牛客的适配器在 P2（浏览器扩展）实现；
+- VJudge 时长拿不到 → `--duration-min` 兜底；榜单接口未核实 → 只用提交信号算压力；
+- 所有会话自动写 SQLite（默认 `~/.ojhc/ojhc.db`，不可写时回退 `engine/.local/`）。
 
 ## M2 的 `run` 做了什么
 
 ```
-夹具/CF API → 提交去重与终态判定 → 压力引擎（§5）→ 离散事件
-           → 感受等级 s → 校准映射 → 闸门模拟（§7）→ 终端打印 + 总结
+夹具/平台 API → 提交去重与终态判定 → 压力引擎（§5）→ 离散事件
+             → 感受等级 s → 校准映射 → 闸门模拟（§7）→ 终端打印 + 存储 + 总结
 ```
 
-- `--mock`：读 `fixtures/cf_1847_mock.json`（一场写死的 120 分钟比赛时间线），零网络；
-- `--contest/--handle`：走真实 CF 官方 API（`contest.status` + `contest.standings`，全局限流 1 次/2 秒）；
-- 没有校准档案时自动用**演示档案**（I_p=20% / I_c=45%）并在输出里标注——只为审阅流水线；
-- `would-fire` 是**模拟**：闸门通过 ≠ 真的输出，真正调用 DGHub `trigger` 在 M4 接。
+- `would-fire` 是**模拟**：闸门通过 ≠ 真的输出，真正调用 DGHub `trigger` 在 M4 接；
+- 没有校准档案时自动用**演示档案**（I_p=20% / I_c=45%）并在输出里标注。
 
 ## 已知限制（M2）
 

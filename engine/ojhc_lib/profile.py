@@ -13,6 +13,21 @@ from pathlib import Path
 
 from .util import now_iso
 
+_LOCAL_FALLBACK = Path(__file__).resolve().parents[1] / ".local" / "profile"
+
+
+def default_dir() -> Path:
+    """默认 ~/.ojhc/；不可写时回退到 engine/.local/profile（沙箱/受限环境）。"""
+    preferred = Path(os.environ.get("OJHC_HOME") or (Path.home() / ".ojhc"))
+    try:
+        preferred.mkdir(parents=True, exist_ok=True)
+        return preferred
+    except OSError:
+        _LOCAL_FALLBACK.mkdir(parents=True, exist_ok=True)
+        return _LOCAL_FALLBACK
+
+
+# 兼容旧引用（优先使用 default_dir()）
 DEFAULT_DIR = Path(os.environ.get("OJHC_HOME") or (Path.home() / ".ojhc"))
 
 HARD_CAP_PCT = 60          # 代码级硬上限（协议安全边界，配置改不动）
@@ -97,11 +112,11 @@ def ensure_dir(path: Path) -> Path:
 
 
 def profile_path(base: Path | None = None) -> Path:
-    return (base or DEFAULT_DIR) / "device_profile.json"
+    return (base or default_dir()) / "device_profile.json"
 
 
 def config_path(base: Path | None = None) -> Path:
-    return (base or DEFAULT_DIR) / "config.json"
+    return (base or default_dir()) / "config.json"
 
 
 def load_profile(base: Path | None = None) -> DeviceProfile | None:
@@ -117,7 +132,7 @@ def load_profile(base: Path | None = None) -> DeviceProfile | None:
 
 
 def save_profile(profile: DeviceProfile, base: Path | None = None) -> Path:
-    ensure_dir(base or DEFAULT_DIR)
+    ensure_dir(base or default_dir())
     path = profile_path(base)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(asdict(profile), ensure_ascii=False, indent=2), encoding="utf-8")
@@ -138,7 +153,7 @@ def load_config(base: Path | None = None) -> UserConfig:
 
 
 def save_config(cfg: UserConfig, base: Path | None = None) -> Path:
-    ensure_dir(base or DEFAULT_DIR)
+    ensure_dir(base or default_dir())
     path = config_path(base)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(asdict(cfg), ensure_ascii=False, indent=2), encoding="utf-8")
