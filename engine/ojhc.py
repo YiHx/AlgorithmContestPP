@@ -175,9 +175,15 @@ def cmd_run(args: argparse.Namespace) -> int:
             # 无校准模式：App 上限即安全上限，映射固定为上限的 20%~60%
             info_dev = device_mod_device_info(args.host, args.port)
             dev_max = int(info_dev.get("max_strength_A") or 0) or int(prof.device_max or 0) or 40
-            prof = profile_mod.new_profile(
-                35, 100, str(info_dev.get("device_type") or "v3"),
-                prof.channel or "both", prof.preset or "呼吸", device_max=dev_max)
+            prof = profile_mod.DeviceProfile(
+                version=1, calibrated_at=profile_mod.now_iso(),
+                device_type=str(info_dev.get("device_type") or "v3"),
+                device_max=dev_max,
+                channel=prof.channel or "both",
+                perceptible_pct=65, comfort_pct=100, user_max_pct=90,
+                preset=(prof.preset if prof.preset and prof.preset not in ("casual", "hardcore")
+                        else "呼吸"),
+                notes="trust-app-limit")
             profile_source = "app-limit"
             print(info(f"无校准模式：设备上限 {dev_max}，输出范围 = 上限的 "
                        f"{prof.perceptible_pct}%~{prof.user_max_pct}%"

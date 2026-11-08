@@ -200,7 +200,7 @@ python -c "import json,urllib.request;req=urllib.request.Request('http://127.0.0
 ## 无校准模式（直接用 App 上限）
 
 不想做校准？加 `--trust-app-limit`：引擎直接读 DG-Lab App 里的强度上限，按它的
-20%~60% 映射（60% 是代码硬顶，绝不会超过你在 App 里设的上限）：
+65%~90% 映射（90% 是代码硬顶，绝不会超过你在 App 里设的上限）：
 
 ```powershell
 python ojhC.py run --mock --device --trust-app-limit --max-run-min 1
