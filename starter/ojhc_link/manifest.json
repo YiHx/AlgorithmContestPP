@@ -27,11 +27,11 @@
         {
           "key": "max_intensity_pct",
           "type": "percent",
-          "label": "本插件硬上限（代码上限 60）",
-          "default": 45,
+          "label": "本插件硬上限（代码上限 90%）",
+          "default": 90,
           "min": 0,
-          "max": 60,
-          "description": "即使 Engine 请求更高，也不会超过这个值和代码里的 60%"
+          "max": 90,
+          "description": "即使 Engine 请求更高，也不会超过这个值和代码里的 90%；App 上限是最终边界"
         },
         {
           "key": "show_status",

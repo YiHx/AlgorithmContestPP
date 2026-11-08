@@ -164,6 +164,11 @@ class SessionRunner:
                 if ack.get("ok"):
                     decision.allowed = True
                     decision.deny = []
+                    applied = ack.get("applied_pct")
+                    if applied is not None and abs(int(applied) - decision.intensity) > 2:
+                        print(f"[device] 注意：插件把强度从 {decision.intensity}% 钳制到 {applied}%")
+                    if ack.get("note"):
+                        print(f"[device] 插件提示：{ack.get('note')}")
                 else:
                     decision.would_fire = False
                     decision.deny = [f"设备拒绝：{ack.get('note')}"]

@@ -32,7 +32,7 @@ except ImportError as exc:  # pragma: no cover
 
 PLUGIN_ID = "ojhc_link"
 PLUGIN_VERSION = "0.1.0"
-HARD_CAP_PCT = 60           # 代码硬上限（配置改不动）
+HARD_CAP_PCT = 90           # 代码硬上限（配置改不动；App 上限本身是最终边界）
 MIN_PULSE_S = 0.3
 MAX_PULSE_S = 3.0
 LEASE_MARGIN = 1.35         # 租约宽限系数（ttl*1.35 后必须归零）
@@ -81,7 +81,7 @@ class OjhPlugin:
     def __init__(self, manifest: dict) -> None:
         self.manifest = manifest
         self.cfg = schema_defaults(manifest)
-        self.max_pct = int(min(int(self.cfg.get("max_intensity_pct", 45) or 45), HARD_CAP_PCT))
+        self.max_pct = int(min(int(self.cfg.get("max_intensity_pct", 90) or 90), HARD_CAP_PCT))
         self.estop = False
         self.lease_id = 0
         self.lease_at = 0.0
