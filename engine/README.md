@@ -208,3 +208,9 @@ python ojhC.py run --url https://codeforces.com/contest/2267 --handle xuanh08 --
 ```
 
 映射结果会在启动时打印（`s2≈…% … 绝对强度 ≈N~M`）。觉得整体弱/强，告诉我要调整的比例即可。
+
+> **Mock 演练要带节奏**：`--mock` 默认瞬时回放，多个脉冲会在同一毫秒连发、互相打断（真机听起来像没输出）。
+> 加 `--replay-speed 2000`（2000 倍速）让事件间隔约 1~3 秒，才和真实比赛相近：
+> ```powershell
+> python ojhC.py run --mock --device --trust-app-limit --replay-speed 2000
+> ```
