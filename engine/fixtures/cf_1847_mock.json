@@ -1,0 +1,38 @@
+{
+  "contest": {
+    "id": 1847,
+    "name": "Codeforces Round 887 (Div. 2) [mock]",
+    "duration_s": 7200,
+    "start_ts": 0,
+    "frozen_from_s": 5400,
+    "problems": [
+      { "index": "A", "rating": 800 },
+      { "index": "B", "rating": 1200 },
+      { "index": "C", "rating": 1600 },
+      { "index": "D", "rating": 2000 }
+    ]
+  },
+  "submissions": [
+    { "id": 101, "rel_s": 300, "verdict": "WRONG_ANSWER", "problem": "A" },
+    { "id": 102, "rel_s": 480, "verdict": "OK", "problem": "A" },
+    { "id": 103, "rel_s": 1500, "verdict": "WRONG_ANSWER", "problem": "B" },
+    { "id": 104, "rel_s": 2100, "verdict": "WRONG_ANSWER", "problem": "B" },
+    { "id": 105, "rel_s": 2400, "verdict": "TIME_LIMIT_EXCEEDED", "problem": "B" },
+    { "id": 106, "rel_s": 3600, "verdict": "OK", "problem": "B" },
+    { "id": 107, "rel_s": 4800, "verdict": "WRONG_ANSWER", "problem": "C" },
+    { "id": 108, "rel_s": 6000, "verdict": "RUNTIME_ERROR", "problem": "C" },
+    { "id": 109, "rel_s": 6600, "verdict": "TESTING", "problem": "C" },
+    { "id": 110, "rel_s": 7100, "verdict": "TIME_LIMIT_EXCEEDED", "problem": "C" }
+  ],
+  "standings": [
+    { "rel_s": 0, "rank": 4000, "solved": 0, "n_official": 8000 },
+    { "rel_s": 600, "rank": 3500, "solved": 1, "n_official": 8000 },
+    { "rel_s": 1200, "rank": 3600, "solved": 1, "n_official": 8000 },
+    { "rel_s": 1800, "rank": 3900, "solved": 1, "n_official": 8000 },
+    { "rel_s": 2400, "rank": 4200, "solved": 1, "n_official": 8000 },
+    { "rel_s": 3600, "rank": 3800, "solved": 2, "n_official": 8000 },
+    { "rel_s": 4800, "rank": 4100, "solved": 2, "n_official": 8000, "frozen": true },
+    { "rel_s": 6000, "rank": 4300, "solved": 2, "n_official": 8000, "frozen": true },
+    { "rel_s": 7200, "rank": 4000, "solved": 2, "n_official": 8000, "frozen": true }
+  ]
+}
