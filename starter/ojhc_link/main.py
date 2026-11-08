@@ -165,7 +165,7 @@ class OjhPlugin:
             raise RuntimeError(f"DGHub 握手被拒：{ack.get('reason')}")
         self.task_ready = True
         asyncio.create_task(self._dghub_loop())
-        await self._dg_log(f"OJHC 硬核模式插件 v{PLUGIN_VERSION} 已连接 DGHub")
+        await self._dg_log(f"{self.manifest.get('name') or PLUGIN_ID} v{PLUGIN_VERSION} 已连接 DGHub")
 
     async def _fetch_token(self, host: str, port: str) -> str | None:
         import urllib.request
@@ -496,7 +496,7 @@ def selftest() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="OJHC 硬核模式插件（M4 设备执行端）")
+    parser = argparse.ArgumentParser(description="算法竞赛++ 插件（M4 设备执行端）")
     parser.add_argument("--selftest", action="store_true")
     parser.add_argument("--engine-port", type=int, default=None)
     parser.add_argument("--engine-token", default=None)
