@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "OJHC Bridge（OJ 硬核模式）",
+  "version": "0.1.0",
+  "description": "把 AtCoder / 洛谷 / 牛客 比赛页面数据（登录态、页面上下文）转发给本机 OJHC Engine，不接管账号密码。",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "https://atcoder.jp/*",
+    "https://www.luogu.com.cn/*",
+    "https://ac.nowcoder.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://atcoder.jp/contests/*",
+        "https://www.luogu.com.cn/contest/*",
+        "https://ac.nowcoder.com/acm/contest/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "OJHC Bridge",
+    "default_popup": "popup.html"
+  }
+}

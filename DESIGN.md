@@ -2,7 +2,7 @@
 
 > 一个把「算法竞赛实时表现」翻译成「可感知反馈」的训练引擎：监听提交判题与实时榜单，计算竞赛压力分，按规则决定是否反馈、反馈多强。
 >
-> 版本：v0.3.4（草案，待评审）　写作时间：2026-11-08　状态：**M1 代码完成待真机；M2 代码完成待审阅**
+> 版本：v0.3.7（草案）　写作时间：2026-11-08　状态：**P1 多平台层 + P2 浏览器桥接完成；设备链路 M4 进行中**
 
 ---
 
@@ -1314,6 +1314,8 @@ MVP **必须包含设备与校准**（这是核心目的），不含 AtCoder/牛
 > **M2 进度（2026-11-08，代码已写、待审阅）**：新增 `pressure.py`（§5 的可执行版本，selftest 断言 §5.6 数值一致）、`cf.py`（CF 官方 API + 离线夹具两套数据源）、`feedback.py`（事件→感受等级→校准映射→闸门模拟）、`runner.py`（会话流水线 + 回放 + 总结），CLI 增加 `run` 子命令。`ojhc run --mock` 可零网络跑完整流水线并打印 would-fire；`live` 代码路径已写但未在真实网络验证。
 >
 > **P1 多平台进度（2026-11-08）**：`platforms/` 抽象层落地（base / codeforces / vjudge / mock），引擎只依赖统一模型；新增 `store.py`（SQLite）与 `sessions` / `report` 命令；VJudge 判题可用、榜单接口核实前自动降级。下一步 P2：浏览器扩展 + AtCoder / 洛谷 / 牛客 适配器。
+>
+> **P2 浏览器桥接进度（2026-11-08）**：`bridge.py`（127.0.0.1 本地 HTTP + 一次性 token）+ `extension/`（MV3，自动发现端口 8765~8774）落地；AtCoder（standings/json + submissions/me）、洛谷（scoreboard 分页自算名次）、牛客（status-list，中文判题）collectors 完成；VJudge 榜单改为 `/contest/rank/single` 自算。已用模拟扩展数据端到端验证：中文判题 → 事件 → 闸门 → would-fire 全链路通过。
 
 风险集中在 M6（登录态/反爬）与 M5（安全测试）；设备链路（M1）要尽早做，因为"手感"是最难估的部分。
 
@@ -1427,6 +1429,7 @@ MVP **必须包含设备与校准**（这是核心目的），不含 AtCoder/牛
 | v0.3.4 | M2 代码落地（待审阅）：`pressure.py` / `cf.py` / `feedback.py` / `runner.py` + `ojhc run --mock`；selftest 增加"§5.6 数值回归 / 闸门映射 / 离线回放"三项；记录 live 模式未验证、罚时未参与、夹具为合成数据等限制 |
 | v0.3.5 | 仓库初始化与许可落地：采用远端初始提交的 **MIT LICENSE**；README 与 §9.0 / §13.2 的许可说明同步为 MIT（本项目不 import/vendor AGPL 的 SDK 代码）；建立 3 个功能提交并推送到 GitHub |
 | v0.3.6 | **P1 多平台架构**：新增 `platforms/`（base 抽象、CF、VJudge、mock），引擎不再依赖具体 OJ；URL 识别五平台；VJudge 判题可用（榜单接口待核实→降级）；新增 SQLite 会话存储与 `sessions` / `report` 命令；selftest 增加判题归一化、URL 识别、回放、存储往返四项 |
+| v0.3.7 | **P2 浏览器桥接**：`bridge.py`（本地 HTTP + token，C 级数据源）+ `extension/`（MV3：AtCoder/洛谷/牛客 collectors、自动发现 Engine）；VJudge 榜单改按 `/contest/rank/single` 自算（无 rank 字段、4/6 元组两种赛制、封榜启发式）；判题归一化支持中文 statusMessage；research v2（平台端点实测）归档 |
 
 ---
 

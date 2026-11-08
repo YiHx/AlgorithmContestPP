@@ -28,17 +28,48 @@ VERDICT_UNKNOWN = "UNKNOWN"
 FAILURE_VERDICTS = {VERDICT_WA, VERDICT_TLE, VERDICT_MLE, VERDICT_RE, VERDICT_CE}
 PENDING_VERDICTS = {VERDICT_TESTING}
 
-_VERDICT_KEYWORDS: list[tuple[tuple[str, ...], str]] = [
-    (("accepted", "ok", "correct"), VERDICT_OK),
-    (("wrong answer", "wrong_answer", "wa"), VERDICT_WA),
-    (("time limit", "tle"), VERDICT_TLE),
-    (("memory limit", "mle"), VERDICT_MLE),
-    (("runtime error", "re"), VERDICT_RE),
-    (("compilation error", "compile error", "ce"), VERDICT_CE),
-    (("presentation error", "output limit"), VERDICT_WA),   # 归到失败类，但不区分子类型
-    (("partial", "partially accepted"), VERDICT_PARTIAL),
-    (("judging", "pending", "queued", "submitted", "testing", "running", "compiling", "waiting"),
-     VERDICT_TESTING),
+# 精确匹配（缩写/状态词）优先，避免 "waiting" 被当成 "wa"
+_EXACT_VERDICT = {
+    "ac": VERDICT_OK, "ok": VERDICT_OK, "accepted": VERDICT_OK,
+    "wa": VERDICT_WA, "wrong answer": VERDICT_WA,
+    "tle": VERDICT_TLE, "mle": VERDICT_MLE, "re": VERDICT_RE, "ce": VERDICT_CE,
+    "pe": VERDICT_WA, "ole": VERDICT_WA,
+    "partial": VERDICT_PARTIAL,
+    "judging": VERDICT_TESTING, "pending": VERDICT_TESTING,
+    "queued": VERDICT_TESTING, "submitted": VERDICT_TESTING,
+    "testing": VERDICT_TESTING, "running": VERDICT_TESTING,
+    "compiling": VERDICT_TESTING, "waiting": VERDICT_TESTING,
+}
+
+# 短语包含匹配（长句优先；不放 "wa"/"re" 这类短词，否则 "waiting" 会误判）
+_VERDICT_PHRASES: list[tuple[str, str]] = [
+    ("accepted", VERDICT_OK),
+    ("correct", VERDICT_OK),
+    ("wrong answer", VERDICT_WA),
+    ("time limit", VERDICT_TLE),
+    ("memory limit", VERDICT_MLE),
+    ("runtime error", VERDICT_RE),
+    ("compilation error", VERDICT_CE),
+    ("compile error", VERDICT_CE),
+    ("presentation error", VERDICT_WA),
+    ("output limit", VERDICT_WA),
+    ("idleness limit", VERDICT_WA),
+    ("partially accepted", VERDICT_PARTIAL),
+    ("judging", VERDICT_TESTING),
+    ("pending", VERDICT_TESTING),
+    ("queued", VERDICT_TESTING),
+    ("testing", VERDICT_TESTING),
+    ("running", VERDICT_TESTING),
+    ("waiting", VERDICT_TESTING),
+    ("submitted", VERDICT_TESTING),
+    # 牛客 statusMessage 是中文（实测样本）
+    ("答案正确", VERDICT_OK),
+    ("答案错误", VERDICT_WA),
+    ("运行超时", VERDICT_TLE),
+    ("内存超限", VERDICT_MLE),
+    ("运行错误", VERDICT_RE),
+    ("编译错误", VERDICT_CE),
+    ("通过", VERDICT_OK),
 ]
 
 
@@ -49,10 +80,11 @@ def normalize_verdict(raw: str | None) -> str:
     # CF 用 WRONG_ANSWER / TIME_LIMIT_EXCEEDED 这种下划线风格，先统一成空格再匹配
     text = str(raw).strip().lower().replace("_", " ").replace("-", " ")
     text = " ".join(text.split())
-    for keywords, canonical in _VERDICT_KEYWORDS:
-        for kw in keywords:
-            if kw == text or kw in text:
-                return canonical
+    if text in _EXACT_VERDICT:
+        return _EXACT_VERDICT[text]
+    for phrase, canonical in _VERDICT_PHRASES:
+        if phrase in text:
+            return canonical
     return VERDICT_UNKNOWN
 
 

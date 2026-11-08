@@ -56,6 +56,7 @@ class RunOptions:
     preset: str = "casual"
     no_submit_minutes: float = 30.0
     no_ac_minutes: float | None = None
+    max_run_s: float | None = None   # 实跑硬上限（测试/演示用；None=跑完比赛时长）
     speed: float = 0.0            # 0 = 立即回放；>0 = 每模拟秒等待 1/speed 秒
     dry_run: bool = True
     quiet: bool = False
@@ -286,12 +287,13 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
         return runner.finalize()
 
     start = meta.start_ts or time.time()
+    limit_s = meta.duration_s if options.max_run_s is None else min(meta.duration_s, options.max_run_s)
     cursor = None
     last_standings: Standings | None = None
     last_standings_at = 0.0
     while True:
         elapsed = time.time() - start
-        if elapsed > meta.duration_s:
+        if elapsed > limit_s:
             break
         try:
             batch = await adapter.poll(cursor)

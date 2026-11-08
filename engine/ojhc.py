@@ -31,6 +31,7 @@ from ojhc_lib import __version__ as VERSION  # noqa: E402
 from ojhc_lib import calibrate as calibrate_mod  # noqa: E402
 from ojhc_lib import doctor as doctor_mod  # noqa: E402
 from ojhc_lib import feedback as feedback_mod  # noqa: E402
+from ojhc_lib import bridge as bridge_mod  # noqa: E402
 from ojhc_lib import platforms as platforms_mod  # noqa: E402
 from ojhc_lib import pressure as pressure_mod  # noqa: E402
 from ojhc_lib import profile as profile_mod  # noqa: E402
@@ -131,14 +132,33 @@ def _resolve_profile(args: argparse.Namespace):
     return prof, "real"
 
 
+def _wait_for_extension(hub, timeout_s: float) -> bool:
+    """等 Chrome 扩展把第一条数据 POST 上来（HTTP 线程在跑，主线程轮询即可）。"""
+    deadline = time.monotonic() + timeout_s
+    last_hint = time.monotonic()
+    while time.monotonic() < deadline:
+        if hub.handshakes > 0:
+            print(ok("扩展已连上，开始接收数据"))
+            return True
+        if time.monotonic() - last_hint >= 15:
+            last_hint = time.monotonic()
+            print(info(f"等待扩展上报数据…（{hub.url}/session；剩余 "
+                       f"{int(deadline - time.monotonic())}s）"))
+        time.sleep(1.0)
+    print(warn("超时没等到扩展：会话继续，但只有扩展上报后才有数据"))
+    return False
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     prof, profile_source = _resolve_profile(args)
     opts = runner_mod.RunOptions(
         handle=args.handle or "", rating=args.rating, preset=args.preset,
         target_percentile=args.percentile, speed=args.speed,
         no_submit_minutes=args.no_submit_minutes,
-        no_ac_minutes=args.no_ac_minutes, dry_run=True)
+        no_ac_minutes=args.no_ac_minutes, dry_run=True,
+        max_run_s=(args.max_run_min * 60 if args.max_run_min else None))
 
+    hub = None
     replay = False
     try:
         if args.mock is not None:
@@ -164,13 +184,29 @@ def cmd_run(args: argparse.Namespace) -> int:
                 print(fail("真实比赛需要 --handle"))
                 return 2
             opts.platform, opts.contest_id = platform, contest_id
-            adapter = platforms_mod.create_adapter(
-                platform, contest_id, args.handle, args.rating,
-                duration_s=args.duration_min * 60)
-            print(info(f"平台 {platforms_mod.PLATFORM_LABELS.get(platform, platform)} · "
-                       f"比赛 {contest_id} · handle {args.handle}"))
+
+            if platform in platforms_mod.BRIDGED or args.bridge:
+                hub = bridge_mod.BridgeHub(
+                    platform, contest_id, args.handle, args.duration_min * 60,
+                    port=args.bridge_port)
+                hub.start()
+                print(info(f"浏览器桥接模式（C 级数据源）：{hub.url}"))
+                print(info("步骤：chrome://extensions → 开发者模式 → 加载已解压的扩展程序 "
+                           "→ 选 extension/ 目录 → 打开并登录比赛页面"))
+                print(info(f"会话信息：{hub.url}/session（扩展会自动发现）"))
+                print(warn("C 级数据源默认不允许驱动设备（设计 §7.5 #10），当前只算分/显示"))
+                adapter = bridge_mod.BridgeAdapter(hub)
+                _wait_for_extension(hub, args.bridge_wait)
+            else:
+                adapter = platforms_mod.create_adapter(
+                    platform, contest_id, args.handle, args.rating,
+                    duration_s=args.duration_min * 60)
+                print(info(f"平台 {platforms_mod.PLATFORM_LABELS.get(platform, platform)} · "
+                           f"比赛 {contest_id} · handle {args.handle}"))
     except platforms_mod.PlatformError as exc:
         print(fail(str(exc)))
+        if hub is not None:
+            hub.stop()
         return 2
 
     st = None if args.no_store else store_mod.Store(args.db)
@@ -180,6 +216,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     finally:
         if st is not None:
             st.close()
+        if hub is not None:
+            hub.stop()
 
     result.summary["profile"] = profile_source
     _print_summary(result)
@@ -302,15 +340,56 @@ def cmd_selftest(args: argparse.Namespace) -> int:
         problems.append("manifest.sdk 必须是字符串 '1'")
     print(f"  manifest OK (id={mid})")
 
-    # 5) 判题归一化
-    cases = {"Accepted": "OK", "Wrong Answer": "WRONG_ANSWER",
-             "Time Limit Exceeded": "TIME_LIMIT_EXCEEDED", "Judging": "TESTING",
-             "测试通过": "UNKNOWN"}
+    # 5) 判题归一化（CF 下划线风格 / AtCoder 缩写 / 状态词）
+    cases = {"Accepted": "OK", "Wrong Answer": "WRONG_ANSWER", "AC": "OK", "WA": "WRONG_ANSWER",
+             "Time Limit Exceeded": "TIME_LIMIT_EXCEEDED", "TLE": "TIME_LIMIT_EXCEEDED",
+             "WRONG_ANSWER": "WRONG_ANSWER", "Judging": "TESTING", "waiting": "TESTING",
+             "答案正确": "OK", "答案错误": "WRONG_ANSWER", "运行超时": "TIME_LIMIT_EXCEEDED",
+             "测试通过": "OK", "未知结果": "UNKNOWN"}
     for raw, want in cases.items():
         got = platforms_mod.normalize_verdict(raw)
         if got != want:
             problems.append(f"verdict 归一化 {raw!r} → {got}，期望 {want}")
     print("  判题归一化 OK")
+
+    # 5b) VJudge rank/single 解析（JSON 无 rank 字段 → 自算）
+    from ojhc_lib.platforms.vjudge import parse_rank_single
+    vj_fixture = _HERE / "fixtures" / "vjudge_rank_single_mock.json"
+    if vj_fixture.exists():
+        vj_payload = json.loads(vj_fixture.read_text(encoding="utf-8"))
+        parsed = parse_rank_single(vj_payload, "tester")
+        if not parsed or parsed.get("rank") != 3 or parsed.get("solved") != 1:
+            problems.append(f"VJudge 榜单解析异常：{parsed}")
+        elif abs(float(parsed["duration_s"]) - 7200) > 1:
+            problems.append(f"VJudge 时长解析异常：{parsed['duration_s']}")
+        else:
+            print(f"  VJudge rank 自算 OK: rank={parsed['rank']} solved={parsed['solved']} "
+                  f"n={parsed['n_official']}")
+    else:
+        problems.append(f"缺少 VJudge 夹具 {vj_fixture}")
+
+    # 5c) 浏览器桥接服务往返（本地 HTTP，不依赖外网）
+    from ojhc_lib import bridge as _bridge
+    import urllib.request as _ur
+    hub = _bridge.BridgeHub("atcoder", "abc300", "tester", duration_s=7200, port=0)
+    base = hub.start()
+    try:
+        session = json.load(_ur.urlopen(base + "/session", timeout=5))
+        req = _ur.Request(
+            base + "/ingest/submissions",
+            data=json.dumps([{"sid": "1", "verdict": "WRONG_ANSWER",
+                              "problem": "A", "rel_s": 60}]).encode(),
+            method="POST",
+            headers={"Content-Type": "application/json",
+                     _bridge.BRIDGE_TOKEN_HEADER: session["token"]})
+        _ur.urlopen(req, timeout=5)
+        got = hub.drain(None)
+        if len(got) != 1 or got[0].verdict != "WRONG_ANSWER":
+            problems.append(f"桥接往返异常：{got}")
+        else:
+            print("  浏览器桥接 OK（token 校验 + 提交入队）")
+    finally:
+        hub.stop()
 
     # 6) URL 识别（五平台）
     urls = {
@@ -437,6 +516,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--rating", type=int, default=1400, help="赛前 rating（算 E_total）")
     p_run.add_argument("--duration-min", type=float, default=120.0,
                        help="平台拿不到时长时的兜底（分钟），目前 VJudge 用")
+    p_run.add_argument("--max-run-min", type=float, default=None,
+                       help="实跑硬上限（分钟）；测试/演示用，默认跑完比赛时长")
     p_run.add_argument("--percentile", type=float, default=0.25, help="目标百分位")
     p_run.add_argument("--preset", choices=["casual", "hardcore"], default="casual")
     p_run.add_argument("--speed", type=float, default=0.0, help="回放加速倍数（0=瞬时）")
@@ -444,6 +525,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--no-ac-minutes", type=float, default=None)
     p_run.add_argument("--db", default=None, help="SQLite 路径（默认 ~/.ojhc/ojhc.db）")
     p_run.add_argument("--no-store", action="store_true", help="不写历史")
+    p_run.add_argument("--bridge", action="store_true",
+                       help="强制走浏览器桥接（AtCoder/洛谷/牛客默认就是桥接）")
+    p_run.add_argument("--bridge-port", type=int, default=8765,
+                       help="桥接服务端口（默认 8765；扩展会自动发现）")
+    p_run.add_argument("--bridge-wait", type=float, default=120.0,
+                       help="等待扩展上线的最长秒数（默认 120）")
     p_run.add_argument("--json", action="store_true")
     p_run.set_defaults(func=cmd_run)
 

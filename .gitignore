@@ -31,3 +31,8 @@ Desktop.ini
 
 # 本地回退目录（沙箱/受限环境）
 .local/
+
+# 本地端到端测试产物
+_bridge_*.txt
+_sim*.py
+

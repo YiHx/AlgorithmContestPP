@@ -26,14 +26,31 @@ python ojhC.py status                 # 档案与档位映射
 python ojhC.py run --mock --rating 1400          # 内置 CF 夹具，零网络
 python ojhC.py run --url https://codeforces.com/contest/1847 --handle <handle>
 python ojhC.py run --platform vjudge --contest 654321 --handle <handle> --duration-min 120
+python ojhC.py run --url https://atcoder.jp/contests/abc300 --handle <handle>   # 桥接模式
+python ojhC.py run --url https://ac.nowcoder.com/acm/contest/12345 --handle <handle>
 
 # 历史与复盘
 python ojhC.py sessions               # 历史会话列表
 python ojhC.py report --session 3     # 事件时间线 + 压力曲线 + 降级信息
 
 # 自检
-python ojhC.py selftest               # 不联网，覆盖压力/闸门/回放/存储
+python ojhC.py selftest               # 不联网，覆盖压力/闸门/回放/存储/桥接
 ```
+
+## 浏览器桥接（AtCoder / 洛谷 / 牛客）
+
+这三个平台没有匿名公开接口，走 `extension/` 在**已登录的页面**里取数，POST 到本机桥接服务：
+
+```
+比赛页面（登录态） → extension/content.js 采集
+        → extension/background.js POST http://127.0.0.1:8765/ingest/*
+        → engine/ojhc_lib/bridge.py → BridgeAdapter → 压力引擎
+```
+
+- `run --url <比赛URL>` 会自动识别平台并启动桥接（打印端口与步骤）；
+- 扩展每 3 秒采集一次，失败指数退避；平台无该能力时自动降级（例如牛客没有榜单）；
+- C 级数据源默认**不允许驱动设备**（`allow_device_on_dom_source=false`）；
+- 安装步骤与平台限制见 [`extension/README.md`](../extension/README.md)。
 
 ## 多平台适配层（P1）
 

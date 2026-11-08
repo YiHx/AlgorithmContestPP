@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>OJHC Bridge</title>
+  <style>
+    body { font: 13px/1.5 "Segoe UI", system-ui, sans-serif; min-width: 300px; padding: 12px; color: #222; }
+    h3 { margin: 0 0 8px; font-size: 15px; }
+    #status { padding: 8px; border-radius: 6px; background: #f2f4f7; margin-bottom: 8px; }
+    #status.ok { background: #e7f6ec; color: #146c2e; }
+    #status.bad { background: #fdecec; color: #8b1a1a; }
+    button { width: 100%; padding: 6px; cursor: pointer; }
+    pre { margin: 8px 0 0; font-size: 11px; color: #555; white-space: pre-wrap; word-break: break-all; }
+    .hint { font-size: 11px; color: #777; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h3>OJHC Bridge</h3>
+  <div id="status">检查 Engine…</div>
+  <button id="reconnect">重新发现 Engine</button>
+  <pre id="detail"></pre>
+  <div class="hint">
+    需要在 engine 目录先运行：<br />
+    <code>python ojhC.py run --url &lt;比赛URL&gt; --handle &lt;你的用户名&gt;</code>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

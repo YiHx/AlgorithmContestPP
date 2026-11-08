@@ -50,11 +50,14 @@ OJ（Codeforces ...） → Contest Engine（压力分 + 安全闸门） → DGHu
 | 引擎 CLI：`doctor` / `calibrate` / `status` / `selftest` | ✅ 干跑验证通过（真机待验证） |
 | 手感校准（测 `I_p` / `I_c`，映射档位） | ✅ 已实现 |
 | 压力分引擎（4 子分 / 平滑 / 滞回） | ✅ 已实现，与 DESIGN.md §5.6 数值一致 |
-| 多平台适配层（CF / VJudge） | ✅ P1：CF 完整；VJudge 判题可用、榜单降级 |
+| 多平台适配层（五平台 URL 识别） | ✅ P1/P2：CF、VJudge 原生；AtCoder/洛谷/牛客 走扩展 |
+| VJudge：判题 + 榜单 | ✅ P1：判题接口实测；榜单按 `rank/single` 自算（封榜启发式） |
+| AtCoder：判题 + 榜单 | 🟡 P2 扩展取数（登录态）；未真机验证 |
+| 洛谷：榜单 | 🟡 P2 扩展取数（成绩表分页找自己）；判题事件待 `record/list` 状态映射核实 |
+| 牛客：判题 | 🟡 P2 扩展取数（`status-list`）；**无实时榜单** → 自动降级 |
+| 浏览器扩展（`extension/`，MV3） | ✅ 代码完成，未在真实浏览器验证 |
 | SQLite 会话历史 + 赛后复盘（`sessions` / `report`） | ✅ 已实现 |
 | 离线回放 + 闸门模拟（`ojhc run --mock`） | ✅ 已实现（打印 would-fire） |
-| Codeforces 实时判题/榜单 | 🟡 live 代码路径已写，未在真实网络验证 |
-| AtCoder / 洛谷 / 牛客 | ⏳ P2（浏览器扩展在登录态页面取数） |
 | 真实设备输出（DGHub `trigger`） | ⛔ M4（当前全部 dry-run） |
 | Linux / macOS | ⛔ 不支持（DGHub 主程序是 Windows 应用） |
 
@@ -85,10 +88,11 @@ python ojhC.py status
 ## 仓库结构
 
 ```
-engine/          引擎 CLI（doctor / calibrate / status / run）+ 夹具
+engine/          引擎 CLI（doctor / calibrate / status / run / sessions / report）+ 夹具
+extension/       Chrome MV3 扩展：AtCoder / 洛谷 / 牛客 登录态页面取数 → 转发本机引擎
 starter/         冒烟插件 ojhC_probe + 安装脚本 + 上手步骤
 examples/        压力算法参考实现（可跑出与文档一致的数值）
-research/        平台接口与 DGHub 协议的逐条事实核查（带 URL/置信度）
+research/        平台接口与 DGHub 协议的逐条事实核查（含 v2 比赛场景实测）
 DESIGN.md        设计文档 v0.3.x（算法 / 安全 / 手感 / 里程碑）
 ```
 

@@ -16,14 +16,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import time
 import urllib.parse
 import urllib.request
 
 from .base import (
-    Capabilities, ContestMeta, PlatformError, Problem, Standings, Submission,
-    normalize_verdict, NotSupported,
+    Capabilities, ContestMeta, PlatformError, Standings, Submission,
+    normalize_verdict,
 )
 
 VJ_BASE = "https://vjudge.net"
@@ -33,7 +32,7 @@ MIN_INTERVAL_S = 1.2          # 非官方接口，保守一点
 class VJudgeAdapter:
     platform = "vjudge"
     capabilities = Capabilities(
-        realtime_verdict=True, live_standings=False, freeze_aware=False,
+        realtime_verdict=True, live_standings=True, freeze_aware=False,
         requires_auth=False, source_level="B")
 
     def __init__(self, contest_id: str, handle: str, rating: int | None = None,
@@ -48,6 +47,9 @@ class VJudgeAdapter:
         self._last_request = 0.0
         self._meta: ContestMeta | None = None
         self._name: str = f"VJudge Contest {contest_id}"
+        self._standings: Standings | None = None
+        self._standings_at = 0.0
+        self._is_replay = False
 
     # -------------------------------------------------- 基础设施
     async def _throttle(self) -> None:
@@ -73,16 +75,20 @@ class VJudgeAdapter:
 
     # -------------------------------------------------- 元信息
     async def load_meta(self) -> ContestMeta:
+        """优先用 rank/single（自带 title/begin/length），页面 HTML 只作兜底。"""
         await self._throttle()
         try:
-            html = self._get(f"{VJ_BASE}/contest/{self.contest_id}")
-            m = re.search(r"<title>\s*(.*?)\s*</title>", html, re.S | re.I)
-            if m:
-                title = re.sub(r"\s+", " ", m.group(1)).strip()
-                if title:
-                    self._name = title[:120]
+            payload = json.loads(self._get(f"{VJ_BASE}/contest/rank/single/{self.contest_id}"))
+            parsed = parse_rank_single(payload, self.handle) or {}
+            if parsed.get("title"):
+                self._name = str(parsed["title"])[:160]
+            if parsed.get("duration_s"):
+                self.duration_s = float(parsed["duration_s"])
+            if parsed.get("begin_ts"):
+                self.session_start_ts = float(parsed["begin_ts"])
+            self._is_replay = bool(parsed.get("is_replay"))
         except Exception:
-            # 页面拿不到不致命：提交接口是匿名可读的
+            # 拿不到不影响提交监听（status/data 匿名可读）
             pass
         self._meta = ContestMeta(
             platform=self.platform,
@@ -91,7 +97,7 @@ class VJudgeAdapter:
             duration_s=self.duration_s,
             problems=[],                    # 非官方接口拿不到题目难度 → E_total 回退 3.0
             start_ts=self.session_start_ts,
-            frozen_from_s=None,             # 封榜信息未知 → 引擎按"未知"保守处理
+            frozen_from_s=None,             # 封榜无法程序化识别 → adapter 内做保守启发式
             url=f"{VJ_BASE}/contest/{self.contest_id}",
         )
         return self._meta
@@ -146,9 +152,133 @@ class VJudgeAdapter:
 
     # -------------------------------------------------- 榜单
     async def standings(self, elapsed_s: float) -> Standings:
-        # 比赛榜单接口尚未核实（研究回填后再实现）；先明确降级，不猜
-        raise NotSupported("VJudge 实时榜单接口未核实，当前降级为仅提交信号")
+        """实测接口：GET /contest/rank/single/<cid>（匿名 JSON，无 rank 字段 → 自算）。"""
+        now = time.monotonic()
+        if self._standings and now - self._standings_at < 20:
+            return self._standings
+        await self._throttle()
+        try:
+            payload = json.loads(self._get(f"{VJ_BASE}/contest/rank/single/{self.contest_id}"))
+        except Exception as exc:  # noqa: BLE001
+            raise PlatformError(f"VJudge 榜单接口异常：{exc}") from exc
+        parsed = parse_rank_single(payload, self.handle)
+        if parsed is None:
+            raise PlatformError("VJudge 榜单里找不到你的账号（检查 --handle 是否与 VJudge 用户名一致）")
+        if parsed.get("title"):
+            self._name = str(parsed["title"])[:160]
+        if parsed.get("duration_s"):
+            self.duration_s = float(parsed["duration_s"])
+        # 封榜无法从 JSON 判定：保守启发式——非 replay 比赛末 60 分钟视为可能封榜
+        frozen = bool(parsed.get("is_replay") is False
+                      and self.duration_s > 3600
+                      and elapsed_s > self.duration_s - 3600)
+        self._standings = Standings(
+            rel_s=elapsed_s, rank=parsed.get("rank"), solved=parsed.get("solved"),
+            n_official=parsed.get("n_official"), frozen=frozen)
+        self._standings_at = now
+        return self._standings
 
     # -------------------------------------------------- 辅助
     def contest_url(self) -> str:
         return f"{VJ_BASE}/contest/{self.contest_id}"
+
+
+# ---------------------------------------------------------------- rank/single 解析
+def _duration_seconds(length) -> float:
+    """VJudge 的 length 常见为分钟；防御性地兼容已经是秒的情况。"""
+    if not isinstance(length, (int, float)) or length <= 0:
+        return 7200.0
+    return float(length) * 60.0 if length <= 24 * 60 else float(length)
+
+
+def _names_of(info: dict) -> set[str]:
+    names: set[str] = set()
+    for key in ("name", "nickname", "username"):
+        value = info.get(key)
+        if isinstance(value, str) and value:
+            names.add(value.lower())
+    for member in info.get("members") or []:
+        if isinstance(member, dict):
+            for key in ("name", "nickname", "username"):
+                value = member.get(key)
+                if isinstance(value, str) and value:
+                    names.add(value.lower())
+    return names
+
+
+def parse_rank_single(payload: dict, handle: str) -> dict | None:
+    """解析 /contest/rank/single 返回，算出我的排名/过题数（JSON 里没有 rank 字段）。
+
+    submissions 行两种格式（研究实测）：
+        4 元组： [uid, probIdx, flag, 耗时ms]                 （ACM 赛制，flag=1 表示 AC）
+        6 元组： [uid, probIdx, flag, 耗时ms, 得分, 满分]      （计分赛制）
+    """
+    participants = payload.get("participants") or {}
+    if not participants:
+        return None
+    rows = payload.get("submissions") or []
+    handle_l = handle.strip().lower()
+
+    my_uid = None
+    for uid, info in participants.items():
+        if isinstance(info, dict) and handle_l in _names_of(info):
+            my_uid = str(uid)
+            break
+    if my_uid is None:
+        return None
+
+    scored = any(isinstance(r, (list, tuple)) and len(r) >= 6 for r in rows)
+    ac_time: dict[tuple[str, str], float] = {}
+    wa_before: dict[tuple[str, str], int] = {}
+    best_score: dict[tuple[str, str], float] = {}
+
+    for row in rows:
+        if not isinstance(row, (list, tuple)) or len(row) < 4:
+            continue
+        uid, prob, flag = str(row[0]), str(row[1]), row[2]
+        try:
+            t_ms = float(row[3] or 0)
+        except (TypeError, ValueError):
+            t_ms = 0.0
+        key = (uid, prob)
+        if scored:
+            try:
+                score = float(row[4] or 0)
+            except (TypeError, ValueError):
+                score = 0.0
+            best_score[key] = max(best_score.get(key, 0.0), score)
+        elif int(flag or 0) == 1:
+            ac_time.setdefault(key, t_ms)
+        else:
+            if key not in ac_time:
+                wa_before[key] = wa_before.get(key, 0) + 1
+
+    stats: dict[str, dict] = {}
+    for uid in participants:
+        if scored:
+            score = sum(v for (u, _p), v in best_score.items() if u == uid)
+            solved = sum(1 for (u, _p), v in best_score.items() if u == uid and v > 0)
+            stats[uid] = {"solved": solved, "score": score, "penalty": 0.0}
+        else:
+            mine = [p for (u, p) in ac_time if u == uid]
+            penalty = sum(ac_time[(uid, p)] for p in mine)
+            penalty += sum(wa_before.get((uid, p), 0) * 20 * 60 * 1000 for p in mine)
+            stats[uid] = {"solved": len(mine), "score": 0.0, "penalty": penalty}
+
+    if scored:
+        order = sorted(stats, key=lambda u: (-stats[u]["score"], stats[u]["penalty"], u))
+    else:
+        order = sorted(stats, key=lambda u: (-stats[u]["solved"], stats[u]["penalty"], u))
+    rank = order.index(my_uid) + 1 if my_uid in order else None
+
+    begin = payload.get("begin")
+    begin_ts = float(begin) / 1000.0 if isinstance(begin, (int, float)) and begin > 1e12 else None
+    return {
+        "title": payload.get("title") or "",
+        "begin_ts": begin_ts,
+        "duration_s": _duration_seconds(payload.get("length")),
+        "rank": rank,
+        "solved": stats[my_uid]["solved"],
+        "n_official": len(participants),
+        "is_replay": bool(payload.get("isReplay", False)),
+    }
