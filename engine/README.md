@@ -168,3 +168,21 @@ cd engine
 python -m unittest discover -s tests -v    # 19 例，纯标准库
 python ojhC.py selftest                    # 冒烟级自检（含设备链路）
 ```
+
+## 校准注意（真机）
+
+`calibrate` 必须带波形预设，否则 DGHub 只改强度、设备不出波形（表现为"50% 也没感觉"）：
+
+```powershell
+python ojhC.py calibrate                # 默认用「呼吸」，会从 DGHub /api/pulse-presets 校验
+python ojhC.py calibrate --preset 潮汐  # 换一个内置预设
+```
+
+可先确认波形能下发：
+
+```powershell
+# 打一发 4 强度的「呼吸」测试脉冲（约 1 秒）
+python -c "import json,urllib.request;req=urllib.request.Request('http://127.0.0.1:8000/api/test-fire',data=json.dumps({'action':'both','strength':4,'duration':1.0,'preset':'呼吸','channel':'both','strength_mode':'rollback'}).encode(),method='POST',headers={'Content-Type':'application/json'});print(urllib.request.urlopen(req,timeout=8).read().decode())"
+```
+
+若仍无感：先看 DGHub 显示的设备上限（`max_a`），在 DG-Lab App 里把「上限」适当调高再校准。

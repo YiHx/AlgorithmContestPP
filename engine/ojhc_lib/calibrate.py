@@ -26,8 +26,33 @@ CAL_STEP_PCT = 5
 CAL_MIN_SPAN = 15
 CAL_MIN_USABLE = 10      # user_max - I_p 至少这么宽，否则档位分不出强弱
 CAL_CONFIRM_TIMES = 3
+CAL_DEFAULT_PRESET = "呼吸"   # 必须有波形预设，否则 DGHub 只改强度、设备不输出
 
 PREVIEW_FRACS = (0.35, 0.50, 0.65)
+
+
+def _available_presets(host: str, port: int) -> list[str]:
+    """从 DGHub HTTP API 读可用波形预设名（失败就返回空列表）。"""
+    import json
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/api/pulse-presets", timeout=3) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return [str(p.get("name")) for p in data.get("presets", []) if p.get("name")]
+    except Exception:
+        return []
+
+
+def _resolve_preset(host: str, port: int, requested: str) -> str:
+    names = _available_presets(host, port)
+    requested = (requested or "").strip()
+    if not names:
+        return requested or CAL_DEFAULT_PRESET
+    if requested and requested in names:
+        return requested
+    if requested:
+        print(warn(f"波形预设 {requested!r} 不在 DGHub 预设列表里，改用「呼吸」"))
+    return "呼吸" if "呼吸" in names else names[0]
 
 
 class CalibrationAborted(Exception):
@@ -72,6 +97,7 @@ async def _step_perceptible(client: DGHubClient, prompter: Prompter, preset: str
         pct += CAL_STEP_PCT
     raise CalibrationAborted(
         f"到 {CAL_MAX_PCT}% 仍确认不了感知阈值。检查：电极贴合、电量、通道选择、波形预设。"
+        f"若 DGHub 显示的设备上限（max_a/max_b）很低，可在 DG-Lab App 里适当调高上限后重试。"
     )
 
 
@@ -146,6 +172,8 @@ async def run_calibration(host: str, port: int, token: str, *,
         print("\n校准开始前请确认：")
         print("  * 电极贴好、电量充足、通道选择正确")
         print("  * 随时可以按 Ctrl+C 中止（不会写档案，也不会留下持续输出）")
+        preset = (preset or CAL_DEFAULT_PRESET) if dry_run else _resolve_preset(host, port, preset)
+        print(info(f"波形预设：{preset}（必须有波形，DGHub 才会真的输出）"))
         if not prompter.confirm("准备好了吗？", default=True):
             raise CalibrationAborted("用户取消")
 
