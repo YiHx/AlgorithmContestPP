@@ -112,10 +112,19 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(f"  感知区间: {prof.perceptible_pct}% ~ {prof.comfort_pct}%  "
               f"本次上限: {prof.user_max_pct}%  通道: {prof.channel}")
         if prof.is_valid():
-            print(f"  档位映射: s=2→{prof.intensity_for(0.35)}%  s=3→{prof.intensity_for(0.50)}%  "
-                  f"s=4→{prof.intensity_for(0.65)}%  s=5→{prof.intensity_for(0.85)}%")
+            def _abs(pct: int) -> str:
+                if not prof.device_max:
+                    return ""
+                return f"（≈{round(pct / 100 * prof.device_max)}）"
+
+            print(f"  档位映射: s=2→{prof.intensity_for(0.35)}%{_abs(prof.intensity_for(0.35))}  "
+                  f"s=3→{prof.intensity_for(0.50)}%{_abs(prof.intensity_for(0.50))}  "
+                  f"s=4→{prof.intensity_for(0.65)}%{_abs(prof.intensity_for(0.65))}  "
+                  f"s=5→{prof.intensity_for(0.85)}%{_abs(prof.intensity_for(0.85))}")
             print(f"  可用区间: I_p={prof.perceptible_pct}% → 安全上限={prof.user_max_pct}%"
                   f"（跨度 {prof.usable_span}%）")
+            if prof.device_max:
+                print(f"  校准设备上限: {prof.device_max}（百分比按此换算成绝对强度）")
     print(f"用户配置: preset={cfg.preset}  channel={cfg.channel}  "
           f"C级源允许设备={cfg.allow_device_on_dom_source}")
     return 0

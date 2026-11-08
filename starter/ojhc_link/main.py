@@ -313,6 +313,9 @@ class OjhPlugin:
             await self._dg_log(f"Engine 拒绝连接：{ack.get('reason')}", "warning")
             return False
         self.link_info = {"host": host, "port": port}
+        # 新会话 = 新的信任建立：清掉上一场结束时的 estop 标记
+        self.estop = False
+        self.lease_id = 0
         await self._dg_log(f"已连接 Engine（{host}:{port}）")
         return True
 

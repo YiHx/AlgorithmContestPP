@@ -41,6 +41,7 @@ class DeviceProfile:
     version: int = 1
     calibrated_at: str = ""
     device_type: str = ""
+    device_max: int = 0           # 校准时设备上限（max_a）；用于把百分比换算成绝对强度
     channel: str = "both"
     perceptible_pct: int = 0      # I_p：刚能感觉到
     comfort_pct: int = 0          # I_c：舒适上限
@@ -162,11 +163,12 @@ def save_config(cfg: UserConfig, base: Path | None = None) -> Path:
 
 
 def new_profile(perceptible: int, comfort: int, device_type: str,
-                channel: str, preset: str) -> DeviceProfile:
+                channel: str, preset: str, device_max: int = 0) -> DeviceProfile:
     user_max = min(int(comfort * 0.8), HARD_CAP_PCT)
     return DeviceProfile(
         calibrated_at=now_iso(),
         device_type=device_type,
+        device_max=int(device_max or 0),
         channel=channel,
         perceptible_pct=perceptible,
         comfort_pct=comfort,

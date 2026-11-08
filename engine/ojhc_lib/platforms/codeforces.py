@@ -91,13 +91,17 @@ class CodeforcesAdapter:
             raise PlatformError(f"CF API: {data.get('comment')}")
         after_id = int(after) if after else None
         out: list[Submission] = []
+        duration_s = getattr(getattr(self, "meta", None), "duration_s", None)
         for item in data["result"]:
             sid = int(item["id"])
             if after_id is not None and sid <= after_id:
                 continue
+            rel_s = float(item.get("relativeTimeSeconds") or 0)
+            if duration_s and rel_s > duration_s:   # CF 对赛外提交返回 INT_MAX
+                rel_s = float(duration_s)
             out.append(Submission(
                 sid=str(sid),
-                rel_s=float(item.get("relativeTimeSeconds") or 0),
+                rel_s=rel_s,
                 verdict=normalize_verdict(item.get("verdict")),
                 problem=str((item.get("problem") or {}).get("index") or "?"),
                 points=float(item.get("points") or 0.0),

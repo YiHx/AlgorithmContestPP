@@ -192,3 +192,7 @@ python -c "import json,urllib.request;req=urllib.request.Request('http://127.0.0
 若仍无感：先看 DGHub 显示的设备上限（`max_a`），在 DG-Lab App 里把「上限」适当调高再校准。
 
 > 用 `--replay-speed` 重放已结束比赛时，`--handle` 必须是**真的参加过那场比赛**的账号，否则会取到 0 条提交。
+
+> **百分比与绝对强度**：DGHub 的 `delta_pct` / `strength` 都是「设备上限的百分比」。
+> 例如设备上限 40 时，50% = 绝对强度 20。校准会显示每一步的绝对强度估算并把上限写进档案，
+> `status` 里也会标注（≈N）。如果觉得整体太弱，先在 DG-Lab App 里把上限调高再重新校准。

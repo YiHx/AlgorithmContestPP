@@ -62,6 +62,9 @@ class CalibrationAborted(Exception):
 async def _pulse(client: DGHubClient, pct: int, preset: str, channel: str,
                  dry_run: bool, fast: bool) -> None:
     pct = int(clamp(pct, 0, CAL_MAX_PCT))
+    dev_max = max(int(client.device.max_strength_a or 0), int(client.device.max_strength_b or 0))
+    if dev_max and not dry_run:
+        print(f"      → 实际强度 ≈ {round(pct / 100 * dev_max)}（设备上限 {dev_max}）")
     if not dry_run:
         await client.trigger(delta_pct=pct, duration_s=CAL_PULSE_S, preset=preset,
                              channel=channel, label=f"OJHC 校准 {pct}%")
@@ -189,10 +192,14 @@ async def run_calibration(host: str, port: int, token: str, *,
             )
 
         prof = profile_mod.new_profile(perceptible, comfort,
-                                       client.device.device_type, channel, preset)
+                                       client.device.device_type, channel, preset,
+                                       device_max=client.device.max_strength_a or 0)
         distinguishable = await _step_preview(client, prompter, preset, channel, dry_run, fast, prof)
 
         path = profile_mod.save_profile(prof, base_dir)
+        if dry_run:
+            print("\n" + ok(f"dry-run 完成（未写档案）：I_p={perceptible}%  I_c={comfort}%  本次上限={user_max}%"))
+            return 0
         print("\n" + ok(f"校准完成：I_p={perceptible}%  I_c={comfort}%  本次上限={user_max}%"))
         if not distinguishable:
             print(warn("三档分辨度不理想：可以换个波形预设或通道再校准一次（旧档案会被覆盖）"))
