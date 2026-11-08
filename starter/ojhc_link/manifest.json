@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "sdk": "1",
   "author": "xuanh08",
-  "description": "OJ Hardcore Engine 的设备执行端：只接受 Engine 的租约化输出指令，租约过期/断开立即归零。",
+  "description": "算法竞赛++ 的设备执行端：只接受 Engine 的租约化输出指令，租约过期/断开立即归零。",
   "entry": "main.py",
   "capabilities": {
     "startup_check": true

@@ -139,7 +139,7 @@ async def run_doctor(host: str, port: int | None, base_dir: Path | None,
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if not problems else 1
 
-    print("OJHC Engine · doctor\n")
+    print("算法竞赛++ · doctor\n")
     print(f"{ok('DGHub 端口') if conn.get('ok') else fail('DGHub 连接')}: "
           f"{conn.get('port')}  {'' if conn.get('ok') else conn.get('reason','')}")
     if conn.get("ok"):

@@ -1,4 +1,4 @@
-# OJHC Bridge（浏览器扩展）
+# 算法竞赛++ 浏览器桥接（Chrome 扩展）
 
 给 AtCoder / 洛谷 / 牛客 用的 Chrome 扩展（Manifest V3）：在**你已登录的页面上下文**里 fetch 平台数据，
 转发给本机 `OJHC Engine`（`127.0.0.1:8765+`）。它不接管账号密码，也不发任何数据到外网。

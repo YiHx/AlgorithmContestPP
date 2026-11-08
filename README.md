@@ -1,4 +1,4 @@
-# OJ Hardcore ⚡ — OJ × DGHub
+# 算法竞赛++ ⚡ — OJ × DGHub
 
 > 把「WA 只有一声提示音」变成「你真的能感觉到」。
 > *Turn your Wrong Answers into something you can feel.*
@@ -23,7 +23,7 @@
 
 算法竞赛的反馈回路太弱了：一道题写很久，提交一次，WA 了，然后……只有一行红色文字。
 
-**OJ Hardcore** 把「比赛/刷题时发生的事」翻译成**可感知**的反馈：实时监听 OJ 的提交判题与榜单表现，算出一个「竞赛压力分」，再按一套严格的安全规则，决定是否、以及多强地驱动郊狼设备。
+**算法竞赛++（Algorithm Contest ++）** 把「比赛/刷题时发生的事」翻译成**可感知**的反馈：实时监听 OJ 的提交判题与榜单表现，算出一个「竞赛压力分」，再按一套严格的安全规则，决定是否、以及多强地驱动郊狼设备。
 
 它不是「WA 就电一下」的玩具，而是有明确安全边界的三层结构：
 
@@ -71,7 +71,7 @@ OJ（Codeforces ...） → Contest Engine（压力分 + 安全闸门） → DGHu
 # 1) 安装冒烟插件（纯 CLI，自动找 DGHub 的 plugins 目录）
 .\starter\install_plugin.ps1
 
-# 2) 重启 DGHub，在插件中心启用一次「OJHC 冒烟探针」
+# 2) 重启 DGHub，在插件中心启用一次「算法竞赛++ 冒烟探针」
 
 # 3) 引擎自检
 pip install websockets

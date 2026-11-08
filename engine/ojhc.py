@@ -1,4 +1,4 @@
-"""OJHC Engine 命令行入口。
+"""算法竞赛++ Engine 命令行入口。
 
 用法（在 engine/ 目录下）：
     python ojhC.py doctor                 # 环境自检：DGHub / 设备 / 档案 / 插件
@@ -106,7 +106,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(data, ensure_ascii=False, indent=2))
         return 0
-    print(f"OJHC Engine v{VERSION}")
+    print(f"算法竞赛++ Engine v{VERSION}")
     print(f"档案目录: {base or profile_mod.default_dir()}")
     if prof is None:
         print(warn("没有设备档案：先跑 `ojhc calibrate`"))

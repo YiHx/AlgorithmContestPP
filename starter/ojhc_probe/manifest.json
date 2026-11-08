@@ -1,10 +1,10 @@
 {
   "id": "ojhc_probe",
-  "name": "OJHC 冒烟探针",
+  "name": "算法竞赛++ 冒烟探针",
   "version": "0.1.0",
   "sdk": "1",
   "author": "xuanh08",
-  "description": "OJ Hardcore Engine 的 M1 冒烟插件：验证 DGHub 链路、发一次可控测试脉冲、随时可停。默认只展示，不碰设备。",
+  "description": "算法竞赛++ 的冒烟插件：验证 DGHub 链路、发一次可控测试脉冲、随时可停。默认只展示，不碰设备。",
   "entry": "main.py",
   "capabilities": {
     "startup_check": true
