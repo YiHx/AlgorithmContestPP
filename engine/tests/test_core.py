@@ -190,6 +190,31 @@ class TestPlatforms(unittest.TestCase):
         self.assertEqual(parsed["rank"], 2)     # 61 < 130
         self.assertEqual(parsed["solved"], 1)   # score>0 的题数
 
+    def test_vjudge_duration_units(self) -> None:
+        from ojhC_lib.platforms import vjudge as vj
+        self.assertEqual(vj._duration_seconds(14100000), 14100.0)   # 毫秒（实测格式）
+        self.assertEqual(vj._duration_seconds(7200), 7200.0)        # 秒
+        self.assertEqual(vj._duration_seconds(120), 7200.0)         # 分钟（旧格式）
+
+    def test_vjudge_acm_six_tuple_not_scored(self) -> None:
+        """ICPC 等 ACM 赛制的 rank/single 也是 6 元组（0/100），不能当计分赛。"""
+        payload = {
+            "title": "icpc", "length": 14100000,
+            "participants": {"1": {"name": "alice"}, "2": {"name": "bob"}},
+            "submissions": [
+                [1, 0, 1, 1000, 100.0, 100.0],   # AC
+                [1, 0, 0, 500, 0.0, 100.0],      # WA
+                [1, 1, 0, 2000, 0.0, 100.0],     # WA
+                [1, 1, 1, 3000, 100.0, 100.0],   # AC
+                [2, 0, 1, 400, 100.0, 100.0],    # bob AC
+            ],
+        }
+        parsed = platforms_mod.parse_rank_single(payload, "alice")
+        assert parsed is not None
+        self.assertEqual(parsed["solved"], 2)
+        self.assertEqual(parsed["rank"], 1)          # alice 2 题 > bob 1 题
+        self.assertAlmostEqual(parsed["duration_s"], 14100.0)
+
     def test_expected_solves(self) -> None:
         problems = [platforms_mod.Problem("A", 800), platforms_mod.Problem("B", 1600)]
         self.assertGreater(platforms_mod.expected_solves(problems, 1400), 1.0)

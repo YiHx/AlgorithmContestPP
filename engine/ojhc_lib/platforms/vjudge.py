@@ -135,9 +135,12 @@ class VJudgeAdapter:
             rel_s = max(0.0, time.time() - self.session_start_ts)
             if isinstance(submitted_ms, (int, float)) and submitted_ms > 1e12:
                 rel_s = max(0.0, submitted_ms / 1000.0 - self.session_start_ts)
+            if self.duration_s and rel_s > self.duration_s + 60:
+                continue            # 赛外提交（VJudge 会在比赛结束后继续保留）
             out.append(Submission(
                 sid=str(run_id), rel_s=rel_s, verdict=verdict,
-                problem=str(rec.get("probNum") or rec.get("problemId") or "?"),
+                problem=str(rec.get("contestNum") or rec.get("probNum")
+                            or rec.get("problemId") or "?"),
                 raw=rec))
         out.sort(key=lambda s: int(s.sid))
         return out
@@ -185,10 +188,18 @@ class VJudgeAdapter:
 
 # ---------------------------------------------------------------- rank/single 解析
 def _duration_seconds(length) -> float:
-    """VJudge 的 length 常见为分钟；防御性地兼容已经是秒的情况。"""
+    """VJudge rank/single 的 length 单位是毫秒（实测 14100000 = 235 分钟）。
+
+    兼容旧格式：如果值很小可能是"分钟"；中等的可能是"秒"。
+    """
     if not isinstance(length, (int, float)) or length <= 0:
         return 7200.0
-    return float(length) * 60.0 if length <= 24 * 60 else float(length)
+    value = float(length)
+    if value > 1_000_000:          # 毫秒（VJudge 实际格式）
+        return value / 1000.0
+    if value > 24 * 60:            # 已经是秒
+        return value
+    return value * 60.0            # 分钟（旧格式）
 
 
 def _names_of(info: dict) -> set[str]:
@@ -227,7 +238,24 @@ def parse_rank_single(payload: dict, handle: str) -> dict | None:
     if my_uid is None:
         return None
 
-    scored = any(isinstance(r, (list, tuple)) and len(r) >= 6 for r in rows)
+    def _looks_scored(items) -> bool:
+        """只有出现"部分得分"（0 < score < full）才判定为计分赛制。
+
+        实测：ICPC 等 ACM 赛制的 rank/single 也是 6 元组，但 5/6 位恒为 0/100，
+        不能仅凭长度判断。
+        """
+        for row in items:
+            if not isinstance(row, (list, tuple)) or len(row) < 6:
+                continue
+            try:
+                score, full = float(row[4] or 0), float(row[5] or 0)
+            except (TypeError, ValueError):
+                continue
+            if full > 0 and 0 < score < full:
+                return True
+        return False
+
+    scored = _looks_scored(rows)
     ac_time: dict[tuple[str, str], float] = {}
     wa_before: dict[tuple[str, str], int] = {}
     best_score: dict[tuple[str, str], float] = {}
