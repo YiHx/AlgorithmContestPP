@@ -15,15 +15,21 @@ import time
 import urllib.request
 from dataclasses import dataclass
 
-try:
-    import websockets
-except ImportError:  # pragma: no cover
-    websockets = None  # type: ignore[assignment]
+def _import_websockets():
+    """只使用 pip 安装的真实 websockets（DGHub 是 PyInstaller 打包，借不到它的依赖）。"""
+    try:
+        import websockets as _ws
+    except ImportError:
+        return None
+    return _ws if hasattr(_ws, "connect") else None
+
+
+websockets = _import_websockets()
 
 from .profile import HARD_CAP_PCT, MAX_PULSE_S, MIN_PULSE_S
 from .util import clamp
 
-DEFAULT_PORTS = (27020, 27021, 27022, 27023, 27800)
+DEFAULT_PORTS = (8000, 27020, 27021, 27022, 27023, 27800)
 
 # Engine 自己作为一个"插件"接进来（和 ojhC_probe 用不同 id，避免冲突）
 ENGINE_MANIFEST = {
