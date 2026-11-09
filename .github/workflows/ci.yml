@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }} on Windows
+    runs-on: windows-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - name: Engine tests and selftest
+        working-directory: engine
+        run: |
+          python -m unittest discover -s tests -v
+          python ojhc.py selftest
+      - name: DGHub plugin selftest
+        run: python starter/ojhc_link/main.py --selftest
+
+  package:
+    name: Static checks and packages
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - name: Check Python
+        run: |
+          python -m pip install ruff==0.15.12
+          python -m ruff check --select E9,F63,F7,F82 engine starter scripts
+      - name: Check browser extension
+        run: |
+          node --check extension/background.js
+          node --check extension/content.js
+          node --check extension/popup.js
+          npx --yes web-ext@10 lint --source-dir extension
+      - name: Build ZIP packages
+        run: python scripts/package.py
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: algorithmcontestpp-packages
+          path: dist/*.zip
+          if-no-files-found: error

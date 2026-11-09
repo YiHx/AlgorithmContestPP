@@ -7,11 +7,11 @@
 准备一台 Windows 电脑，装好 [DGHub](http://dghub.top/) 和 Python 3.10 或更新版本。用 PowerShell 在仓库目录执行下面两行，装完重开 DGHub。
 
 ```powershell
-python -m pip install websockets
+python -m pip install -r requirements.txt
 .\starter\install_plugin.ps1 -Plugin ojhc_link
 ```
 
-DGHub 插件需要仓库里的 `engine` 目录。单独导入插件 ZIP 时，也要把引擎放在本机，并在插件配置里填好引擎目录。
+从 [GitHub Releases](https://github.com/YiHx/AlgorithmContestPP/releases) 下载插件 ZIP 时，可以在 DGHub 的插件中心直接导入，省掉第二行命令。引擎仍从仓库或 Release 的源码包取得，放到本机后在插件配置里选 `engine` 目录。
 
 牛客、AtCoder 和洛谷需要浏览器扩展。Codeforces 装了扩展可以走快速通道。Chrome、Edge 和 Firefox 共用仓库里的 `extension` 目录，按你的浏览器选对应的[安装步骤](extension/README.md#安装浏览器扩展)。
 
@@ -36,6 +36,7 @@ DGHub 插件需要仓库里的 `engine` 目录。单独导入插件 ZIP 时，�
 | 洛谷 | 暂未接入 | 有。需要扩展 | 目前只能看榜单，WA 不会触发设备 |
 
 本项目通过 DGHub 插件连接设备。当前真机测试用的是 DGHub 的 V3 模式，V4 还没做过端到端测试。
+各浏览器的验证状态、实测记录和设备输出限制见 [验证说明](VALIDATION.md)。
 
 ## 反馈规则
 

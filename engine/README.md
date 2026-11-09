@@ -5,7 +5,8 @@
 ## 安装依赖
 
 ```powershell
-pip install websockets
+# 在仓库根目录执行
+python -m pip install -r requirements.txt
 ```
 
 > 只用这一个第三方依赖；其余全是标准库。`websockets` 只在真正连 DGHub 时需要，
