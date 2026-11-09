@@ -4,6 +4,7 @@
 // 而扩展的 service worker 不受页面混合内容限制。
 
 const PORTS = Array.from({ length: 10 }, (_, i) => 8765 + i);
+const runtime = (globalThis.browser ?? globalThis.chrome).runtime;
 let cached = null; // { base, session }
 let collector = null;
 let collectionStatus = null;
@@ -77,7 +78,7 @@ async function post(path, payload, token) {
   }
 }
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
       if (msg && msg.type === "get_session") {

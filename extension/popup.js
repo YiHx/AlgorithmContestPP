@@ -1,6 +1,7 @@
 // 算法竞赛++ 浏览器桥接 - popup
 const statusEl = document.getElementById("status");
 const detailEl = document.getElementById("detail");
+const runtime = (globalThis.browser ?? globalThis.chrome).runtime;
 
 function setStatus(text, ok) {
   statusEl.textContent = text;
@@ -11,7 +12,7 @@ async function refresh(force) {
   setStatus("检查 Engine…", false);
   let session = null;
   try {
-    session = await chrome.runtime.sendMessage({ type: "get_session", force: !!force, includeCollector: true });
+    session = await runtime.sendMessage({ type: "get_session", force: !!force, includeCollector: true });
   } catch (e) {
     setStatus("无法联系扩展后台", false);
     return;

@@ -148,7 +148,7 @@ def _resolve_profile(args: argparse.Namespace):
 
 
 def _wait_for_extension(hub, timeout_s: float) -> bool:
-    """等 Chrome 扩展把第一条数据 POST 上来（HTTP 线程在跑，主线程轮询即可）。"""
+    """等待浏览器扩展上报第一条数据。"""
     deadline = time.monotonic() + timeout_s
     last_hint = time.monotonic()
     while time.monotonic() < deadline:
@@ -262,8 +262,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                     print(fail(f"浏览器桥接端口 {args.bridge_port} 无法监听：{exc}。检查是否还有旧引擎在运行。"))
                     return 2
                 print(info(f"浏览器桥接模式（C 级数据源）：{hub.url}"))
-                print(info("步骤：chrome://extensions → 开发者模式 → 加载已解压的扩展程序 "
-                           "→ 选 extension/ 目录 → 打开并登录比赛页面"))
+                print(info("安装浏览器扩展后打开并登录比赛页面。Chrome、Edge 和 Firefox 的安装步骤见仓库的 extension/README.md。"))
                 print(info(f"会话信息：{hub.url}/session（扩展会自动发现）"))
                 if not enable_device:
                     print(info("设备输出关闭，本会话只记录和显示"))

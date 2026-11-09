@@ -55,7 +55,8 @@
   }
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const send = (payload) => chrome.runtime.sendMessage(payload);
+  const runtime = (globalThis.browser ?? globalThis.chrome).runtime;
+  const send = (payload) => runtime.sendMessage(payload);
 
   async function post(path, payload, token) {
     const result = await send({ type: "post", path, payload, token });

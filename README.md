@@ -13,7 +13,7 @@ python -m pip install websockets
 
 DGHub 插件需要仓库里的 `engine` 目录。单独导入插件 ZIP 时，也要把引擎放在本机，并在插件配置里填好引擎目录。
 
-牛客、AtCoder 和洛谷需要浏览器扩展。Codeforces 也可以装，用它走快速通道。在 Chrome 打开 `chrome://extensions`，开启开发者模式，点「加载已解压的扩展程序」，选择仓库里的 `extension` 文件夹。更新项目后，点一下扩展的重新加载按钮，再刷新比赛页。
+牛客、AtCoder 和洛谷需要浏览器扩展。Codeforces 装了扩展可以走快速通道。Chrome、Edge 和 Firefox 共用仓库里的 `extension` 目录，按你的浏览器选对应的[安装步骤](extension/README.md#安装浏览器扩展)。
 
 ## 开一场
 
