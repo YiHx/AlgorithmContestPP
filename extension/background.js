@@ -39,10 +39,11 @@ async function refreshSession() {
   }
 }
 
-async function post(path, payload) {
+async function post(path, payload, token) {
   if (!cached || !cached.session) {
     if (!(await discover())) return { ok: false, error: "engine not found" };
   }
+  if (token && token !== cached.session.token) return { ok: false, error: "session changed" };
   try {
     const resp = await fetch(cached.base + path, {
       method: "POST",
@@ -68,7 +69,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const result = msg.force ? await discover() : await refreshSession();
         sendResponse(result ? result.session : null);
       } else if (msg && msg.type === "post") {
-        sendResponse(await post(msg.path, msg.payload));
+        sendResponse(await post(msg.path, msg.payload, msg.token));
       } else {
         sendResponse({ ok: false, error: "unknown message" });
       }

@@ -74,7 +74,7 @@ DGHub 2.0 插件（op:"event" 展示 / trigger 输出）
 
 **场景 C：牛客周赛 / 洛谷比赛**
 牛客没有公开实时接口（官方只有赛后 ndjson 导出），洛谷 ACM 类赛制可见判题、OI 赛制官方明确不可见。
-→ 都走浏览器扩展在用户已登录的页面内取数，属 C 级数据源：可以算分、可以显示，**设备输出默认关闭**（§7.5）。洛谷 OI 赛制直接进降级模式。
+→ 都走浏览器扩展在用户已登录的页面内取数，属 C 级数据源。牛客和 AtCoder 的本人判题随设备输出开关授权（§7.5）。洛谷当前只接榜单。
 
 ### 1.2 用户分层（决定默认配置）
 
@@ -726,7 +726,7 @@ def hysteretic_level(p, st, up, down, need):
 |---|---|---|
 | A | 官方 API（目前只有 Codeforces） | 全部反馈 |
 | B | 非官方 JSON（VJudge `status/data`） | 全部反馈，解析失败即降级 |
-| C | 浏览器扩展 / 页面内取数（AtCoder、牛客、洛谷） | display/audio 全开；**device 默认禁用**，需用户显式打开 `allow_device_on_dom_source`（§7.5 第 10 条） |
+| C | 浏览器扩展 / 页面内取数（AtCoder、牛客、洛谷） | display/audio 全开。牛客和 AtCoder 随设备输出开关授权，洛谷当前仅接榜单（§7.5 第 10 条） |
 
 ### 6.2 新鲜度与过期
 
@@ -845,8 +845,8 @@ pause_after      = 180s    # 超过 -> 面板警告，暂停计时器
 
 | 机制 | 默认值 | 目的 |
 |---|---|---|
-| 全局冷却 | 相邻两次 device 输出 ≥ 90s | 防止连续判题造成连击 |
-| 同类冷却 | 同 kind ≥ 120s | 防止"WA→TLE→WA"三连 |
+| 全局冷却 | 默认要求相邻两次 device 输出间隔 ≥ 10s，插件页可调 | 防止连续判题造成连击 |
+| 同类冷却 | 同 kind 的输出间隔 ≥ 30s（casual）或 ≥ 90s（hardcore） | 防止"WA→TLE→WA"三连 |
 | 令牌桶 | 容量 5，每 3 分钟补 1（≈20 次/小时，允许小突发） | 平滑长期频率 |
 | 小时窗硬限 | 30 次/小时 | 绝对兜底 |
 | **升压禁止** | 最近 3 次 device 输出均为 failure 且期间无任何 AC → 封顶 `s=2`（校准区间低档）且额外冷却 +60s | 人已经在挨罚状态，不该越罚越重 |
@@ -868,7 +868,7 @@ pause_after      = 180s    # 超过 -> 面板警告，暂停计时器
 7. 令牌桶非空且全局/同类冷却已过；
 8. `level >= L1`；
 9. `intensity > 0`；
-10. 数据源可信度 A/B；**C 级（扩展/DOM 取数）默认不给设备**，需用户显式打开 `allow_device_on_dom_source` 并接受风险；
+10. 数据源可信度 A/B。C 级中，牛客和 AtCoder 随设备输出开关授权，其余需要用户显式打开 `allow_device_on_dom_source`；
 11. 当前不在封榜跳变滤波窗口内（§6.5）。
 
 任何一条不满足 → 事件照常显示，但 `allowed=false`。**拒绝也要可见**，用户要能看到"系统为什么没动"。
@@ -993,7 +993,7 @@ Step 4 手感预览
 | 等级跨越 | 仅显示 | 可选（s ≤ 2） |
 | 比赛最后 10 分钟"冲刺提醒" | ❌ | ✅（1 次） |
 
-**hardcore** = 事件更密 + 冷却 60s（仍受 §7.4 硬限约束）；**casual** = 冷却 90s、事件更少、L1 封顶 s=3。
+**hardcore** = 事件更密，未接收插件调参时全局冷却 60s。**casual** = 默认全局冷却 10s、事件更少、L1 封顶 s=3。两种预设均受 §7.4 的限制。
 密度提升仍受 §7.4 的令牌桶（≈20 次/小时）与升压禁止约束，不会退化成持续刺激。
 
 ---
@@ -1221,10 +1221,10 @@ device:
   expired_after_days: 30
 
 safety:
-  allow_device_on_dom_source: false   # C 级源（AtCoder/牛客/洛谷扩展）默认不给设备
+  allow_device_on_dom_source: false   # 牛客和 AtCoder 随设备输出开关授权，其余 C 级源默认只显示
   hotkey_kill: "ctrl+alt+shift+x"
   device_hourly_cap: 30
-  cooldown_s: 90
+  cooldown_s: 10
 
 platforms:
   codeforces:

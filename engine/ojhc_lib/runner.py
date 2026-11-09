@@ -453,6 +453,7 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
     runner = SessionRunner(meta, profile, options, store=store, session_id=session_id,
                            device=device if device_started else None,
                            source_level=source_level)
+    poll_live = getattr(adapter, "poll_live", None) if getattr(adapter, "fast", None) is not None else None
     try:
         if replay:
             if options.replay_speed and options.replay_speed > 0:
@@ -485,32 +486,24 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
         cursor = None
         last_standings: Standings | None = None
         last_standings_at = 0.0
-        first_poll = True
+        first_poll = poll_live is None and not getattr(adapter, "has_submission_baseline", False)
+        poll = poll_live or adapter.poll
         while True:
             elapsed = time.time() - start
             if elapsed > limit_s:
                 break
             try:
-                batch = await adapter.poll(cursor)
+                batch = await poll(cursor)
             except Exception as exc:  # noqa: BLE001
                 if f"poll error: {exc}" not in runner.degraded:
                     runner.degraded.append(f"poll error: {exc}")
                 batch = []
             if first_poll:
-                # 第一次拉取里可能混着"启动前已有的历史提交"和"扩展刚上报的新提交"：
-                # 只跳过官方 API 的历史，扩展快速通道的提交照常处理。
                 first_poll = False
-                fast_items = [s for s in batch
-                              if isinstance(s.raw, dict) and s.raw.get("_fast")]
-                native_items = [s for s in batch if s not in fast_items]
-                if native_items:
-                    cursor = native_items[-1].sid
-                    print(f"[live] 已忽略启动前的历史提交 {len(native_items)} 条（不触发电击）")
-                if fast_items:
-                    print(f"[live] 扩展上报新提交 {len(fast_items)} 条，正常处理")
-                    batch = fast_items
-                else:
-                    batch = []
+                if batch:
+                    cursor = batch[-1].sid
+                    print(f"[live] 已忽略启动前的历史提交 {len(batch)} 条（不触发电击）")
+                batch = []
             for sub in batch:
                 # CF 虚拟参赛/赛外提交的 relativeTimeSeconds 可能是 INT_MAX：用本次真实 elapsed 代替
                 if (sub.rel_s is None or sub.rel_s < 0
@@ -527,8 +520,12 @@ async def run_adapter(adapter: PlatformAdapter, profile: DeviceProfile | None,
             await asyncio.sleep(getattr(adapter, "poll_sleep_s", 2.5))
         return runner.finalize()
     finally:
-        if device_started:
-            await device.estop("session end")
-            await device.close()
-            device.remove_link_file()
-            print("[device] 会话结束：已急停并关闭设备链路")
+        try:
+            if device_started:
+                await device.estop("session end")
+                await device.close()
+                device.remove_link_file()
+                print("[device] 会话结束：已急停并关闭设备链路")
+        finally:
+            if poll_live is not None:
+                await adapter.close_live()

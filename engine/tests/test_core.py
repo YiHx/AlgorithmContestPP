@@ -127,11 +127,24 @@ class TestGate(unittest.TestCase):
         gate = feedback_mod.Gate(self.prof, "casual", mode="pressure")
         state = pressure_mod.PressureState(p=60, level=2, confidence="high")
         first = gate.evaluate(self._wa(), state, 100.0)
-        second = gate.evaluate(feedback_mod.Event("verdict.tle", 120.0, "题 C", s=3),
-                               state, 120.0)
+        second = gate.evaluate(feedback_mod.Event("verdict.tle", 109.0, "题 C", s=3),
+                               state, 109.0)
+        third = gate.evaluate(feedback_mod.Event("verdict.tle", 110.0, "题 C", s=3),
+                              state, 110.0)
         self.assertTrue(first.would_fire)
         self.assertFalse(second.would_fire)
-        self.assertTrue(any("冷却" in r for r in second.deny))
+        self.assertIn("全局冷却中（10s）", second.deny)
+        self.assertTrue(third.would_fire)
+
+    def test_casual_same_kind_cooldown(self) -> None:
+        gate = feedback_mod.Gate(self.prof, "casual", mode="simple")
+        state = pressure_mod.PressureState(p=60, level=2, confidence="high")
+        first = gate.evaluate(self._wa(), state, 100.0)
+        early = gate.evaluate(self._wa(), state, 129.0)
+        ready = gate.evaluate(self._wa(), state, 130.0)
+        self.assertTrue(first.would_fire)
+        self.assertIn("同类事件冷却中（verdict.wa）", early.deny)
+        self.assertTrue(ready.would_fire)
 
     def test_escalation_ban_caps_s(self) -> None:
         gate = feedback_mod.Gate(self.prof, "casual", mode="pressure")
@@ -221,29 +234,56 @@ class TestPlatforms(unittest.TestCase):
         self.assertEqual(platforms_mod.expected_solves([], 1400), 3.0)
 
 
-class TestCFFastPath(unittest.TestCase):
-    """CF 浏览器快速通道（扩展盯页面）与官方 API 的合并去重。"""
+class TestCFFastPath(unittest.IsolatedAsyncioTestCase):
+    def test_page_baseline_and_final_verdicts(self) -> None:
+        hub = bridge_mod.BridgeHub("codeforces", "2256", "tester")
+        historical = {"sid": "100", "verdict": "WRONG_ANSWER"}
+        pending = {"sid": "101", "verdict": "TESTING"}
+        final = {**pending, "verdict": "WRONG_ANSWER"}
+        later = {"sid": "102", "verdict": "OK"}
 
-    def test_fast_path_merge(self) -> None:
+        self.assertEqual(hub.ingest_submissions([historical], cf_page=True), 0)
+        self.assertEqual(hub.handshakes, 1)
+        self.assertEqual(hub.ingest_submissions([historical, pending, later], cf_page=True), 1)
+        self.assertEqual([sub.sid for sub in hub.drain()], ["102"])
+        self.assertEqual(hub.ingest_submissions([historical, final, later], cf_page=True), 1)
+        self.assertEqual([sub.sid for sub in hub.drain()], ["101"])
+        self.assertEqual(hub.ingest_submissions([final, later], cf_page=True), 0)
+
+    async def test_fast_path_does_not_wait_for_api(self) -> None:
         from unittest import mock
         from ojhc_lib.platforms import codeforces as cf
 
-        class FakeHub:
-            def __init__(self) -> None:
-                self.subs = [cf.Submission(sid="100", rel_s=10.0,
-                                           verdict="WRONG_ANSWER", problem="A")]
-
-            def drain(self, cursor):
-                return [s for s in self.subs if int(s.sid) > int(cursor or 0)]
-
         adapter = cf.CodeforcesAdapter("2256", "tester")
-        adapter.attach_fast(FakeHub())
-        self.assertEqual(adapter.poll_sleep_s, 0.4)
-        with mock.patch.object(cf, "_http_get_json", return_value={"status": "OK", "result": []}):
-            first = asyncio.run(adapter.poll(None))
-            self.assertEqual([s.sid for s in first], ["100"])
-            second = asyncio.run(adapter.poll("100"))
-            self.assertEqual(second, [])
+        hub = bridge_mod.BridgeHub("codeforces", "2256", "tester")
+        adapter.attach_fast(hub)
+        hub.ingest_submissions([], cf_page=True)
+        api_started = asyncio.Event()
+        api_ready = asyncio.Event()
+        api_verdict = cf.Submission("101", 10.0, "TESTING", "A")
+
+        async def fetch():
+            api_started.set()
+            await api_ready.wait()
+            return [api_verdict]
+
+        with mock.patch.object(adapter, "_fetch_submissions", side_effect=fetch), \
+                mock.patch.object(adapter, "_standings_at", cf.time.monotonic()):
+            try:
+                self.assertEqual(await adapter.poll_live(None), [])
+                await asyncio.wait_for(api_started.wait(), timeout=1)
+                hub.ingest_submissions([{"sid": "101", "verdict": "WRONG_ANSWER"}], cf_page=True)
+                batch = await asyncio.wait_for(adapter.poll_live(None), timeout=1)
+                self.assertEqual([(sub.sid, sub.verdict) for sub in batch], [("101", "WRONG_ANSWER")])
+                await asyncio.wait_for(adapter.standings(10.0), timeout=1)
+                api_ready.set()
+                await adapter._native_task
+                api_verdict.verdict = "WRONG_ANSWER"
+                self.assertEqual(await adapter.poll_live("101"), [])
+                await adapter._native_task
+                self.assertEqual(await adapter.poll_live("101"), [])
+            finally:
+                await adapter.close_live()
 
 
 class TestStore(unittest.TestCase):
@@ -266,22 +306,41 @@ class TestStore(unittest.TestCase):
 
 
 class TestBridge(unittest.TestCase):
+    def test_second_bridge_cannot_share_listening_port(self) -> None:
+        first = bridge_mod.BridgeHub("nowcoder", "142560", "tester", port=0)
+        first.start()
+        second = bridge_mod.BridgeHub("nowcoder", "143854", "tester", port=first.port)
+        try:
+            with self.assertRaises(OSError):
+                second.start()
+        finally:
+            second.stop()
+            first.stop()
+
     def test_roundtrip_and_token(self) -> None:
         import urllib.request
         hub = bridge_mod.BridgeHub("atcoder", "abc300", "tester", duration_s=7200, port=0)
         base = hub.start()
         try:
             session = json.load(urllib.request.urlopen(base + "/session", timeout=5))
+            hub.ingest_submissions([])
+            start_ms = session["started_at"] * 1000
+            new = {"sid": "2", "verdict": "答案错误", "problem": "A",
+                   "handle": "tester", "time": start_ms + 1000}
             req = urllib.request.Request(
                 base + "/ingest/submissions",
-                data=json.dumps([{"sid": "1", "verdict": "答案错误",
-                                  "problem": "A", "rel_s": 60}]).encode(),
+                data=json.dumps([
+                    {**new, "sid": "1", "time": start_ms - 1000},
+                    {**new, "handle": "other-user"},
+                    new,
+                ]).encode(),
                 method="POST",
                 headers={"Content-Type": "application/json",
                          bridge_mod.BRIDGE_TOKEN_HEADER: session["token"]})
             urllib.request.urlopen(req, timeout=5)
             subs = hub.drain(None)
             self.assertEqual(len(subs), 1)
+            self.assertEqual(subs[0].sid, "2")
             self.assertEqual(subs[0].verdict, "WRONG_ANSWER")
             # 错误 token 必须 401
             bad = urllib.request.Request(
@@ -293,6 +352,24 @@ class TestBridge(unittest.TestCase):
             self.assertEqual(ctx.exception.code, 401)
         finally:
             hub.stop()
+
+
+class TestNowcoderBridge(unittest.IsolatedAsyncioTestCase):
+    async def test_empty_baseline_and_out_of_order_verdicts(self) -> None:
+        hub = bridge_mod.BridgeHub("nowcoder", "142560", "tester")
+        adapter = bridge_mod.BridgeAdapter(hub)
+        self.assertEqual(hub.ingest_submissions([]), 0)
+        self.assertEqual(hub.handshakes, 1)
+
+        pending = {"sid": "101", "verdict": "等待判题"}
+        accepted = {"sid": "102", "verdict": "答案正确"}
+        wrong = {**pending, "verdict": "答案错误"}
+        self.assertEqual(hub.ingest_submissions([pending, accepted]), 1)
+        self.assertEqual([sub.sid for sub in await adapter.poll(None)], ["102"])
+        self.assertEqual(hub.ingest_submissions([wrong, accepted]), 1)
+        self.assertEqual([(sub.sid, sub.verdict) for sub in await adapter.poll("102")],
+                         [("101", "WRONG_ANSWER")])
+        self.assertEqual(hub.ingest_submissions([wrong]), 0)
 
 
 class TestDeviceLink(unittest.IsolatedAsyncioTestCase):

@@ -1,9 +1,8 @@
 """本地桥接：Chrome 扩展在用户已登录的页面里取数 → POST 到 Engine。
 
 为什么需要它（DESIGN.md §4.2）：AtCoder / 洛谷 / 牛客没有可用的公开匿名接口，
-只能由扩展在页面上下文（带 Cookie）fetch，再转发给本机引擎。属于 C 级数据源：
-    * 可以算压力分、可以显示
-    * 设备输出默认禁用（allow_device_on_dom_source=false），需要显式放开
+由扩展在已登录的页面中取数，再转发给本机引擎。支持本人最终判题快照的平台
+可以在显式开启设备输出后参与联动。
 
 协议（只监听 127.0.0.1）：
     GET  /health                → {"ok": true, "version": "..."}
@@ -11,6 +10,7 @@
     POST /ingest/meta           → {"name"?, "duration_s"?, "problems"?}
     POST /ingest/standings      → {"rank"?, "solved"?, "n_official"?, "frozen"?, "rel_s"?}
     POST /ingest/submissions    → [{sid|id, verdict, problem, rel_s?, points?}, ...]
+    POST /ingest/cf-page        → CF /my 页面快照，首帧建立会话基线
     POST 需要 Header: X-OJHC-Token: <token>
 
 扩展在页面里 fetch 平台自己的接口（AtCoder standings/json、洛谷 scoreboard 等），
@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,10 +28,23 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from .platforms.base import (
     Capabilities, ContestMeta, NotSupported, PlatformAdapter, Problem, Standings,
     Submission, normalize_verdict,
+    PENDING_VERDICTS, VERDICT_UNKNOWN,
 )
 
 DEFAULT_BRIDGE_PORT = 8765
 BRIDGE_TOKEN_HEADER = "X-OJHC-Token"
+SUBMISSION_SNAPSHOT_PLATFORMS = frozenset({"atcoder", "nowcoder"})
+PLATFORM_NAMES = {"atcoder": "AtCoder", "nowcoder": "牛客"}
+
+
+class _BridgeHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = not hasattr(socket, "SO_EXCLUSIVEADDRUSE")
+
+    def server_bind(self) -> None:
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            # Windows 的 SO_REUSEADDR 会让两个引擎同时监听同一端口。
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 class BridgeHub:
@@ -50,6 +64,7 @@ class BridgeHub:
         self._lock = threading.Lock()
         self._inbox: list[Submission] = []
         self._seen: set[str] = set()
+        self._page_baseline: int | None = None
         self._standings = Standings()
         self.has_standings = False
         self.handshakes = 0
@@ -61,7 +76,7 @@ class BridgeHub:
     # -------------------------------------------------- 生命周期
     def start(self) -> str:
         handler = _make_handler(self)
-        self._server = ThreadingHTTPServer(("127.0.0.1", self.port), handler)
+        self._server = _BridgeHTTPServer(("127.0.0.1", self.port), handler)
         self._server.daemon_threads = True
         self.port = self._server.server_address[1]
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
@@ -105,16 +120,39 @@ class BridgeHub:
             self.handshakes += 1
             self.last_ingest = time.time()
 
-    def ingest_submissions(self, items: list[dict]) -> int:
+    def ingest_submissions(self, items: list[dict], *, cf_page: bool = False) -> int:
         received = 0
+        platform_name = PLATFORM_NAMES.get(self.platform)
+        page_snapshot = cf_page or self.platform in SUBMISSION_SNAPSHOT_PLATFORMS
         with self._lock:
+            if page_snapshot and self._page_baseline is None:
+                self._page_baseline = max((_num(item.get("sid") or item.get("id")) for item in items
+                                           if isinstance(item, dict)), default=0)
+                self.handshakes += 1
+                self.last_ingest = time.time()
+                if platform_name:
+                    print(f"[bridge] {platform_name} 采集已建立基线（{len(items)} 条历史提交）", flush=True)
+                return 0
             for item in items:
                 if not isinstance(item, dict):
                     continue
                 sid = str(item.get("sid") or item.get("id") or "")
                 if not sid or sid in self._seen:
                     continue
+                if page_snapshot and _num(sid) <= self._page_baseline:
+                    continue
+                if self.platform == "atcoder":
+                    handle = str(item.get("handle") or "").strip().casefold()
+                    timestamp = item.get("time")
+                    if (handle != self.handle.strip().casefold()
+                            or not isinstance(timestamp, (int, float))
+                            or timestamp < self.started_at * 1000):
+                        continue
                 verdict = normalize_verdict(item.get("verdict") or item.get("status"))
+                if (page_snapshot or self.platform == "codeforces") and (
+                    verdict in PENDING_VERDICTS or verdict == VERDICT_UNKNOWN
+                ):
+                    continue
                 rel_s = item.get("rel_s")
                 if rel_s is None:
                     ts = item.get("time") or item.get("timestamp")
@@ -129,6 +167,8 @@ class BridgeHub:
                 self._seen.add(sid)
                 self._inbox.append(sub)
                 received += 1
+                if platform_name:
+                    print(f"[bridge] {platform_name} 收到判题 #{sid} {verdict}", flush=True)
             if received:
                 self.handshakes += 1
                 self.last_ingest = time.time()
@@ -171,6 +211,7 @@ class BridgeAdapter:
     def __init__(self, hub: BridgeHub) -> None:
         self.hub = hub
         self.platform = hub.platform
+        self.has_submission_baseline = self.platform in SUBMISSION_SNAPSHOT_PLATFORMS
 
     async def load_meta(self) -> ContestMeta:
         return ContestMeta(
@@ -186,7 +227,7 @@ class BridgeAdapter:
         )
 
     async def poll(self, after: str | None) -> list[Submission]:
-        return self.hub.drain(after)
+        return self.hub.drain(None if self.has_submission_baseline else after)
 
     async def standings(self, elapsed_s: float) -> Standings:
         if not self.hub.has_standings:
@@ -275,6 +316,12 @@ def _make_handler(hub: BridgeHub):
             elif path == "/ingest/standings":
                 hub.ingest_standings(payload)
                 self._json(200, {"ok": True})
+            elif path == "/ingest/cf-page" and hub.platform == "codeforces":
+                if not isinstance(payload, list):
+                    self._json(400, {"error": "expected a list"})
+                    return
+                count = hub.ingest_submissions(payload, cf_page=True)
+                self._json(200, {"ok": True, "received": count})
             elif path == "/ingest/submissions":
                 items = payload if isinstance(payload, list) else payload.get("submissions", [])
                 count = hub.ingest_submissions(items)

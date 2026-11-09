@@ -37,8 +37,9 @@ EVENT_S = {
 LEVEL_CAP = {0: 0, 1: 3, 2: 4, 3: 5}
 
 # 预设（§7.9.5）
+DEFAULT_COOLDOWN_S = 10
 PRESETS = {
-    "casual": {"cooldown_s": 90.0, "same_kind_s": 120.0, "max_s": 4, "enable_level_up": False},
+    "casual": {"cooldown_s": DEFAULT_COOLDOWN_S, "same_kind_s": 30.0, "max_s": 4, "enable_level_up": False},
     "hardcore": {"cooldown_s": 60.0, "same_kind_s": 90.0, "max_s": 5, "enable_level_up": True},
 }
 
@@ -54,7 +55,7 @@ TUNING_DEFAULTS = {
     "no_ac_minutes": 20,         # 简单模式下：多久没 AC 电一次
     "no_ac_escalation": 5,       # 每次"没 AC"电击比上一次加多少（% of App 上限），封顶 90%
     "base_intensity": 74, "intensity_step": 4, "max_s": 4,
-    "cooldown_s": 90, "hourly_cap": 30, "allow_level_up": False, "preset": "呼吸",
+    "cooldown_s": DEFAULT_COOLDOWN_S, "hourly_cap": 30, "allow_level_up": False, "preset": "呼吸",
     "hard_cap": 90,              # 插件页面的硬上限（0~100，100%=App 上限）
 }
 
@@ -80,7 +81,7 @@ def normalize_tuning(raw: dict | None) -> dict | None:
         "base_intensity": num("base_intensity", 40, 90, 74),
         "intensity_step": num("intensity_step", 0, 10, 4),
         "max_s": num("max_s", 2, 5, 4),
-        "cooldown_s": num("cooldown_s", 10, 300, 90),
+        "cooldown_s": num("cooldown_s", 10, 300, DEFAULT_COOLDOWN_S),
         "hourly_cap": num("hourly_cap", 5, 60, 30),
         "allow_level_up": bool(raw.get("allow_level_up", False)),
         "preset": str(raw.get("preset") or "呼吸")[:32],

@@ -34,7 +34,7 @@ PLATFORM_CAPABILITIES = {
     "codeforces": "A 级：官方 API，实时判题 + 榜单 + 封榜",
     "vjudge": "B 级：非官方接口，实时判题；榜单自算，封榜不可判定",
     "atcoder": "C 级：扩展取数（需登录），standings/json + 本人提交页",
-    "luogu": "C 级：扩展取数（需登录），成绩表 + record/list；OI 赛制无实时结果",
+    "luogu": "C 级：扩展取数（需登录），当前只接成绩表",
     "nowcoder": "C 级：扩展取数，status-list 提交可用；无实时榜单",
 }
 

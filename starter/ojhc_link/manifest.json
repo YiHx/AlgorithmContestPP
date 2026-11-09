@@ -141,7 +141,7 @@
           "key": "cooldown_s",
           "type": "number",
           "label": "两次电击最小间隔（秒）",
-          "default": 90,
+          "default": 10,
           "min": 10,
           "max": 300
         },

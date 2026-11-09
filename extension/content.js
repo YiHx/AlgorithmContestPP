@@ -8,11 +8,6 @@
   "use strict";
 
   const PLATFORM = detectPlatform();
-  if (PLATFORM === "codeforces") {
-    // 从提交页跳转过来，或在 my 页：开 20 秒加速窗口
-    if (/\/submit\/?$/.test(location.pathname)) fastUntil = Date.now() + 30000;
-    if (/\/my\/?$/.test(location.pathname)) fastUntil = Date.now() + 20000;
-  }
   function pollBase() {
     if (PLATFORM === "codeforces") {
       return Date.now() < fastUntil ? BURST_POLL_MS : FAST_POLL_MS;
@@ -25,7 +20,9 @@
   const POLL_MS = 3000;
   const FAST_POLL_MS = 1000;   // Codeforces：扩展盯页面，绕过官方 API 的 2s 限速
   const BURST_POLL_MS = 300;   // 刚提交/刚打开 my 页时加速
-  let fastUntil = 0;           // 加速窗口截止时间
+  const fastUntil = /\/submit\/?$/.test(location.pathname) ? Date.now() + 30000
+    : /\/my\/?$/.test(location.pathname) ? Date.now() + 20000 : 0;
+  let lastCfPage = null;
   const KNOWN_VERDICTS = [
     "AC", "WA", "TLE", "MLE", "RE", "CE", "WJ", "QLE", "OLE", "IE",
     "WRONG_ANSWER", "TIME_LIMIT_EXCEEDED", "RUNTIME_ERROR", "COMPILATION_ERROR",
@@ -57,33 +54,14 @@
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const send = (payload) => chrome.runtime.sendMessage(payload);
 
-  async function post(path, payload) {
-    const result = await send({ type: "post", path, payload });
+  async function post(path, payload, token) {
+    const result = await send({ type: "post", path, payload, token });
     if (!result || result.ok === false) {
       lastError = (result && result.error) || "post failed";
       return false;
     }
     lastError = "";
     return true;
-  }
-
-  function hhmmssToSeconds(text) {
-    const parts = text.split(":").map((x) => parseInt(x, 10));
-    if (parts.length === 2) return parts[0] * 60 + parts[1];
-    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    return null;
-  }
-
-  function pickVerdict(texts) {
-    for (let i = texts.length - 1; i >= 0; i--) {
-      const raw = (texts[i] || "").trim();
-      if (!raw) continue;
-      const upper = raw.toUpperCase();
-      for (const token of KNOWN_VERDICTS) {
-        if (upper === token.toUpperCase() || raw === token) return token;
-      }
-    }
-    return null;
   }
 
   // ------------------------------------------------------------ AtCoder
@@ -123,24 +101,35 @@
   }
 
   async function atcoderSubmissions(handle) {
-    const resp = await fetch(`/contests/${CONTEST_ID}/submissions/me`, { credentials: "same-origin" });
-    if (!resp.ok || resp.redirected) return [];
+    const path = `/contests/${CONTEST_ID}/submissions`;
+    const resp = await fetch(`${path}/me`, { credentials: "same-origin", cache: "no-store" });
+    if (!resp.ok) return null;
+    const resultUrl = new URL(resp.url);
+    if (resultUrl.origin !== location.origin || ![path, `${path}/me`].includes(resultUrl.pathname)) return null;
     const html = await resp.text();
     const doc = new DOMParser().parseFromString(html, "text/html");
     const out = [];
     for (const row of doc.querySelectorAll("table tbody tr")) {
-      const link = row.querySelector('a[href*="/submissions/"]');
+      const user = row.querySelector('a[href^="/users/"]')?.textContent.trim();
+      if (user?.toLowerCase() !== handle.trim().toLowerCase()) continue;
+      const link = row.querySelector(`a[href^="${path}/"]`);
       if (!link) continue;
       const m = (link.getAttribute("href") || "").match(/\/submissions\/(\d+)/);
       if (!m) continue;
-      const texts = [...row.querySelectorAll("td")].map((td) => td.textContent.replace(/\s+/g, " ").trim());
-      const verdict = pickVerdict(texts) || "UNKNOWN";
-      const timeText = texts.find((t) => /^\d{1,2}:\d{2}(:\d{2})?$/.test(t));
+      const header = [...(row.closest("table")?.querySelectorAll("thead th") || [])];
+      const statusColumn = header.findIndex((th) => /^(status|result|結果|判定|ステータス)$/i.test(th.textContent.trim()));
+      const statusCell = row.querySelector(".judge-status") || row.cells[statusColumn];
+      const status = statusCell?.textContent.trim().toUpperCase();
+      const verdict = KNOWN_VERDICTS.includes(status) ? status : "UNKNOWN";
+      const timeTag = row.querySelector("time");
+      const submittedAt = Date.parse(timeTag?.getAttribute("datetime") || timeTag?.textContent || "");
+      if (!Number.isFinite(submittedAt)) continue;
       const taskLink = row.querySelector('a[href*="/tasks/"]');
       const problem = taskLink ? (taskLink.getAttribute("href").split("/tasks/")[1] || "?") : "?";
       out.push({
         sid: m[1],
-        rel_s: timeText ? hhmmssToSeconds(timeText) : null,
+        handle: user,
+        time: submittedAt,
         verdict,
         problem
       });
@@ -150,10 +139,10 @@
 
   async function collectAtCoder(session) {
     const payload = { meta: await atcoderMeta() };
-    const standings = await atcoderStandings(session.handle);
+    const standings = await atcoderStandings(session.handle).catch(() => null);
     if (standings) payload.standings = standings;
     const submissions = await atcoderSubmissions(session.handle);
-    if (submissions.length) payload.submissions = submissions;
+    if (submissions !== null) payload.submissions = submissions;
     return payload;
   }
 
@@ -216,16 +205,20 @@
         { credentials: "same-origin", headers: { "X-Requested-With": "XMLHttpRequest" } });
       if (!resp.ok) { lastError = `status-list HTTP ${resp.status}`; return payload; }
       const data = await resp.json();
-      const items = (data.data && data.data.data) || [];
-      const submissions = items
-        .filter((it) => it && it.submissionId)
+      const items = data.data?.data;
+      if (data.code !== 0 || !Array.isArray(items)) {
+        lastError = "status-list returned no submission list";
+        return payload;
+      }
+      const handle = session.handle.trim().toLowerCase();
+      payload.submissions = items
+        .filter((it) => it?.submissionId && String(it.userName).trim().toLowerCase() === handle)
         .map((it) => ({
           sid: String(it.submissionId),
           verdict: it.statusMessage || "UNKNOWN",
           problem: it.index || "?",
           time: it.submitTime
         }));
-      if (submissions.length) payload.submissions = submissions;
       // 牛客没有可用的实时榜单接口（research: rank/rank-list/scoreboard 全 404）
     } catch (e) {
       lastError = "status-list failed";
@@ -238,7 +231,7 @@
     for (const raw of texts) {
       const t = (raw || "").trim();
       if (!t) continue;
-      if (/^accepted$/i.test(t)) return "AC";
+      if (/^(accepted|pretests passed)$/i.test(t)) return "AC";
       if (/wrong answer/i.test(t)) return "WRONG_ANSWER";
       if (/time limit/i.test(t)) return "TIME_LIMIT_EXCEEDED";
       if (/memory limit/i.test(t)) return "MEMORY_LIMIT_EXCEEDED";
@@ -252,15 +245,12 @@
     return "UNKNOWN";
   }
 
-  async function collectCodeforces(session) {
-    const payload = {};
-    let resp;
-    try {
-      resp = await fetch(`/contest/${CONTEST_ID}/my`, { credentials: "same-origin" });
-    } catch (e) {
-      return payload;
-    }
-    if (!resp.ok || resp.redirected) return payload;
+  async function collectCodeforces() {
+    const contestPath = location.pathname.startsWith("/gym/") ? "gym" : "contest";
+    const resp = await fetch(`/${contestPath}/${CONTEST_ID}/my`, {
+      credentials: "same-origin", cache: "no-store"
+    });
+    if (!resp.ok || resp.redirected) throw new Error(`CF /my: HTTP ${resp.status}`);
     const html = await resp.text();
     const doc = new DOMParser().parseFromString(html, "text/html");
     const items = [];
@@ -286,27 +276,10 @@
         rel_s: rel,
       });
     }
-    if (!items.length) return payload;
-
-    // 用 chrome.storage 记录已上报的最大 submission id：
-    // 首次只建立基线（旧提交不补电），之后只推新增的
-    const key = `ojhc_cf_${CONTEST_ID}_maxsid`;
-    const maxSid = Math.max(...items.map((i) => parseInt(i.sid, 10)));
-    const stored = await new Promise((resolve) => {
-      chrome.storage.local.get([key], (data) => resolve(data[key]));
-    });
-    if (stored === undefined || stored === null) {
-      await new Promise((resolve) => chrome.storage.local.set({ [key]: maxSid }, resolve));
-      return payload;
+    if (!items.length && !doc.querySelector("table.status-frame-datatable")) {
+      throw new Error("CF /my: submission table not found");
     }
-    const fresh = items
-      .filter((i) => parseInt(i.sid, 10) > Number(stored))
-      .sort((a, b) => parseInt(a.sid, 10) - parseInt(b.sid, 10));
-    if (fresh.length) {
-      await new Promise((resolve) => chrome.storage.local.set({ [key]: maxSid }, resolve));
-      payload.submissions = fresh;
-    }
-    return payload;
+    return { cfPage: items };
   }
 
   const COLLECTORS = { atcoder: collectAtCoder, luogu: collectLuogu,
@@ -328,10 +301,17 @@
       try {
         const payload = await COLLECTORS[PLATFORM](session);
         let ok = true;
+        if (payload.cfPage) {
+          const snapshot = JSON.stringify(payload.cfPage);
+          if (!lastCfPage || lastCfPage.token !== session.token || lastCfPage.snapshot !== snapshot) {
+            ok = await post("/ingest/cf-page", payload.cfPage, session.token);
+            if (ok) lastCfPage = { token: session.token, snapshot };
+          }
+        }
         if (payload.meta) ok = (await post("/ingest/meta", payload.meta)) && ok;
         if (payload.standings) ok = (await post("/ingest/standings", payload.standings)) && ok;
-        if (payload.submissions && payload.submissions.length) {
-          ok = (await post("/ingest/submissions", payload.submissions)) && ok;
+        if (payload.submissions) {
+          ok = (await post("/ingest/submissions", payload.submissions, session.token)) && ok;
         }
         backoff = ok ? pollBase() : Math.min(backoff * 2, 30000);
       } catch (e) {

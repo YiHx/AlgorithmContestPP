@@ -62,7 +62,7 @@ starter/ojhc_link（DGHub 插件）
 
 安全要点：
 - `--device` 必须配合**真实校准档案**（演示档案直接拒绝）；
-- C 级数据源（AtCoder/洛谷/牛客扩展）默认禁设备，需要 `--allow-device-on-dom-source`（不建议）；
+- 牛客和 AtCoder 扩展支持 `--device`（DGHub 插件页的「带设备输出」）。洛谷目前只接榜单；
 - 会话结束/异常强制 estop；审计日志记录 `would_fire` 与 `allowed` 两列。
 
 ## 浏览器桥接（AtCoder / 洛谷 / 牛客）
@@ -77,7 +77,7 @@ starter/ojhc_link（DGHub 插件）
 
 - `run --url <比赛URL>` 会自动识别平台并启动桥接（打印端口与步骤）；
 - 扩展每 3 秒采集一次，失败指数退避；平台无该能力时自动降级（例如牛客没有榜单）；
-- C 级数据源默认**不允许驱动设备**（`allow_device_on_dom_source=false`）；
+- 牛客和 AtCoder 的本人判题在显式启用设备输出后可触发设备。洛谷尚无判题事件；
 - 安装步骤与平台限制见 [`extension/README.md`](../extension/README.md)。
 
 ## 多平台适配层（P1）
@@ -229,7 +229,7 @@ python ojhC.py run --url https://codeforces.com/contest/2267 --handle xuanh08 --
 | 每档递增 | 4% | 0~10% | s 每升一档加多少 |
 | 最高档位 s | 4 | 2~5 | 允许的最高严重度 |
 | 波形预设 | 呼吸 | DGHub 预设列表 | 手感 |
-| 两次电击最小间隔 | 90s | 30~300s | 冷却 |
+| 两次电击最小间隔 | 10s | 10~300s | 全局冷却 |
 | 每小时最多次数 | 30 | 5~60 | 配额 |
 | 等级上升时也电一下 | 关 | 开/关 | level_up 事件 |
 | 本插件硬上限 | 90% | 0~90% | 代码级兜底，配置改不动 |

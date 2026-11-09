@@ -11,9 +11,11 @@ import asyncio
 import json
 import time
 import urllib.request
+from dataclasses import replace
 
 from .base import (
     Capabilities, ContestMeta, PlatformError, Problem, Standings, Submission,
+    PENDING_VERDICTS, VERDICT_UNKNOWN,
     normalize_verdict, expected_rank_from_ratings,
 )
 
@@ -62,8 +64,11 @@ class CodeforcesAdapter:
         self.fast = None
         self._fast_connected_logged = False
         self._fast_wait_logged = False
-        self._fast_cursor: str | None = None
-        self._last_native_poll = 0.0
+        self._native_task: asyncio.Task | None = None
+        self._native_batch: list[Submission] = []
+        self._native_baseline: int | None = None
+        self._reported: set[str] = set()
+        self._native_error = ""
         self.poll_sleep_s = 2.2
 
     async def load_meta(self) -> ContestMeta:
@@ -87,6 +92,7 @@ class CodeforcesAdapter:
             frozen_from_s=(duration - float(freeze)) if freeze else None,
             url=f"https://codeforces.com/contest/{self.contest_id}",
         )
+        self._update_standings(res, 0.0)
         return self._meta
 
     def attach_fast(self, source) -> None:
@@ -95,75 +101,99 @@ class CodeforcesAdapter:
         self.poll_sleep_s = 0.4
 
     async def poll(self, after: str | None) -> list[Submission]:
-        collected: dict[int, Submission] = {}
-
-        # 1) 浏览器快速通道：无 CF API 限速，先收
-        if self.fast is not None:
-            handshakes = getattr(self.fast, "handshakes", 0)
-            if handshakes and not self._fast_connected_logged:
-                self._fast_connected_logged = True
-                print("[fast] 浏览器扩展已连接：提交→电击延迟约 1~2 秒")
-            elif not handshakes and not self._fast_wait_logged:
-                self._fast_wait_logged = True
-                print("[fast] 等待浏览器扩展连接…（打开 CF 比赛页面即可，"
-                      "未连接时自动走官方 API）")
-            try:
-                for sub in self.fast.drain(self._fast_cursor):
-                    self._fast_cursor = sub.sid
-                    try:
-                        sid_int = int(sub.sid)
-                    except (TypeError, ValueError):
-                        continue
-                    # 标记来源：渲染"启动前历史"过滤时放行扩展新上报的提交
-                    if not isinstance(sub.raw, dict):
-                        sub.raw = {}
-                    sub.raw = {**sub.raw, "_fast": True}
-                    collected[sid_int] = sub
-            except Exception:  # noqa: BLE001
-                pass
-
-        # 2) 官方 API：遵守 2.1s 限速；有快速通道时不必每轮都打
-        now = time.monotonic()
-        need_native = (self.fast is None
-                       or now - self._last_native_poll >= self.limiter.min_interval_s)
-        if need_native:
-            await self.limiter.wait()
-            self._last_native_poll = time.monotonic()
-            data = _http_get_json(
-                f"{CF_API}contest.status?contestId={self.contest_id}"
-                f"&handle={self.handle}&from=1&count=100")
-            if data.get("status") != "OK":
-                raise PlatformError(f"CF API: {data.get('comment')}")
-            duration_s = getattr(getattr(self, "meta", None), "duration_s", None)
-            for item in data["result"]:
-                sid = int(item["id"])
-                rel_s = float(item.get("relativeTimeSeconds") or 0)
-                if duration_s and rel_s > duration_s:   # 赛外提交（INT_MAX）忽略
-                    continue
-                collected[sid] = Submission(
-                    sid=str(sid),
-                    rel_s=rel_s,
-                    verdict=normalize_verdict(item.get("verdict")),
-                    problem=str((item.get("problem") or {}).get("index") or "?"),
-                    points=float(item.get("points") or 0.0),
-                    raw=item,
-                )
-
+        collected = await self._fetch_submissions()
         after_id = int(after) if after else None
-        out = [sub for sid, sub in collected.items()
-               if after_id is None or sid > after_id]
-        out.sort(key=lambda s: int(s.sid))
-        return out
+        return sorted((sub for sub in collected if after_id is None or int(sub.sid) > after_id),
+                      key=lambda sub: int(sub.sid))
+
+    async def _fetch_submissions(self) -> list[Submission]:
+        await self.limiter.wait()
+        data = await asyncio.to_thread(
+            _http_get_json, f"{CF_API}contest.status?contestId={self.contest_id}"
+            f"&handle={self.handle}&from=1&count=100")
+        if data.get("status") != "OK":
+            raise PlatformError(f"CF API: {data.get('comment')}")
+        return [
+            Submission(
+                sid=str(int(item["id"])),
+                rel_s=float(item.get("relativeTimeSeconds") or 0),
+                verdict=normalize_verdict(item.get("verdict")),
+                problem=str((item.get("problem") or {}).get("index") or "?"),
+                points=float(item.get("points") or 0.0),
+                raw=item,
+            )
+            for item in data["result"]
+        ]
+
+    async def _refresh_native(self) -> None:
+        try:
+            batch = await self._fetch_submissions()
+            if self._native_baseline is None:
+                self._native_baseline = max((int(sub.sid) for sub in batch), default=0)
+            else:
+                self._native_batch = [sub for sub in batch if int(sub.sid) > self._native_baseline]
+            if time.monotonic() - self._standings_at >= 45:
+                await self._fetch_standings(0.0)
+            self._native_error = ""
+        except Exception as exc:  # 网络故障不影响浏览器通道
+            message = str(exc)
+            if message != self._native_error:
+                print(f"[live] CF 官方 API 暂不可用：{message}")
+                self._native_error = message
+
+    async def poll_live(self, after: str | None) -> list[Submission]:
+        if self.fast is None:
+            return await self.poll(after)
+        if self.fast.handshakes and not self._fast_connected_logged:
+            self._fast_connected_logged = True
+            print("[fast] 浏览器扩展已连接，CF 页面采集已建立基线")
+        elif not self.fast.handshakes and not self._fast_wait_logged:
+            self._fast_wait_logged = True
+            print("[fast] 等待浏览器扩展采集 CF 页面；官方 API 在后台运行")
+
+        if self._native_task is None or self._native_task.done():
+            self._native_task = asyncio.create_task(self._refresh_native())
+        batch, self._native_batch = self._native_batch, []
+        collected = {sub.sid: sub for sub in batch}
+        fast_ids = set()
+        for sub in self.fast.drain():
+            if sub.sid.isdecimal() and sub.verdict not in PENDING_VERDICTS and sub.verdict != VERDICT_UNKNOWN:
+                collected[sub.sid] = sub
+                fast_ids.add(sub.sid)
+
+        ready = []
+        for sub in sorted(collected.values(), key=lambda sub: int(sub.sid)):
+            if sub.sid in self._reported or sub.verdict in PENDING_VERDICTS or sub.verdict == VERDICT_UNKNOWN:
+                continue
+            self._reported.add(sub.sid)
+            if sub.sid in fast_ids:
+                print(f"[fast] 扩展收到判题 #{sub.sid} {sub.verdict}")
+            ready.append(sub)
+        return ready
+
+    async def close_live(self) -> None:
+        if self._native_task is not None:
+            self._native_task.cancel()
+            await asyncio.gather(self._native_task, return_exceptions=True)
+            self._native_task = None
 
     async def standings(self, elapsed_s: float) -> Standings:
         now = time.monotonic()
+        if self._native_task is not None:
+            return replace(self._standings, rel_s=elapsed_s) if self._standings else Standings(rel_s=elapsed_s)
         if self._standings and now - self._standings_at < 45:
             return self._standings
+        return await self._fetch_standings(elapsed_s)
+
+    async def _fetch_standings(self, elapsed_s: float) -> Standings:
         await self.limiter.wait()
-        data = _http_get_json(f"{CF_API}contest.standings?contestId={self.contest_id}")
+        data = await asyncio.to_thread(
+            _http_get_json, f"{CF_API}contest.standings?contestId={self.contest_id}")
         if data.get("status") != "OK":
             raise PlatformError(f"CF API: {data.get('comment')}")
-        res = data["result"]
+        return self._update_standings(data["result"], elapsed_s)
+
+    def _update_standings(self, res: dict, elapsed_s: float) -> Standings:
         rows = res.get("rows", [])
         self._rows = rows
         my_rank = my_solved = None
@@ -178,7 +208,7 @@ class CodeforcesAdapter:
         self._standings = Standings(
             rel_s=elapsed_s, rank=my_rank, solved=my_solved,
             n_official=len(rows) or None, frozen=bool(contest.get("frozen")))
-        self._standings_at = now
+        self._standings_at = time.monotonic()
         return self._standings
 
     def my_expected_rank(self) -> float | None:

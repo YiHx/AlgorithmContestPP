@@ -43,7 +43,7 @@ TUNING_DEFAULTS = {
     "base_intensity": 74,   # App 上限的百分比（s=2 档）
     "intensity_step": 4,    # 每升一档加多少
     "max_s": 4,             # 最高档位
-    "cooldown_s": 90,       # 两次电击最小间隔
+    "cooldown_s": 10,       # 两次电击最小间隔
     "hourly_cap": 30,       # 每小时最多几次
     "allow_level_up": False,  # 等级上升是否也电
     "preset": "呼吸",        # 波形预设

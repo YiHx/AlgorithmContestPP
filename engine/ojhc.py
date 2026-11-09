@@ -251,15 +251,28 @@ def cmd_run(args: argparse.Namespace) -> int:
             opts.platform, opts.contest_id = platform, contest_id
 
             if platform in platforms_mod.BRIDGED or args.bridge:
+                if platform in bridge_mod.SUBMISSION_SNAPSHOT_PLATFORMS and enable_device:
+                    opts.allow_device_on_c = True
                 hub = bridge_mod.BridgeHub(
                     platform, contest_id, args.handle, args.duration_min * 60,
                     port=args.bridge_port)
-                hub.start()
+                try:
+                    hub.start()
+                except OSError as exc:
+                    print(fail(f"浏览器桥接端口 {args.bridge_port} 无法监听：{exc}。检查是否还有旧引擎在运行。"))
+                    return 2
                 print(info(f"浏览器桥接模式（C 级数据源）：{hub.url}"))
                 print(info("步骤：chrome://extensions → 开发者模式 → 加载已解压的扩展程序 "
                            "→ 选 extension/ 目录 → 打开并登录比赛页面"))
                 print(info(f"会话信息：{hub.url}/session（扩展会自动发现）"))
-                print(warn("C 级数据源默认不允许驱动设备（设计 §7.5 #10），当前只算分/显示"))
+                if not enable_device:
+                    print(info("设备输出关闭，本会话只记录和显示"))
+                elif opts.allow_device_on_c:
+                    print(info("本会话允许浏览器判题通过输出闸门后驱动设备"))
+                elif platform == "luogu":
+                    print(warn("洛谷当前只接入榜单，尚无本人判题事件"))
+                else:
+                    print(warn("此浏览器数据源默认不允许驱动设备（设计 §7.5 #10），当前只算分/显示"))
                 adapter = bridge_mod.BridgeAdapter(hub)
                 _wait_for_extension(hub, args.bridge_wait)
             else:
@@ -275,8 +288,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                             args.duration_min * 60, port=args.bridge_port)
                         hub.start()
                         adapter.attach_fast(hub)
-                        print(info(f"快速通道（可选）：{hub.url} ← 浏览器扩展盯 CF 页面，"
-                                   f"可把延迟压到 ~1~2 秒；不装扩展则走官方 API（~2~4 秒）"))
+                        print(info(f"快速通道：{hub.url} ← 浏览器扩展采集 CF 页面；"
+                                   "官方 API 在后台兜底"))
                     except OSError as exc:
                         print(warn(f"快速通道端口不可用，改走官方 API：{exc}"))
     except platforms_mod.PlatformError as exc:
@@ -468,10 +481,12 @@ def cmd_selftest(args: argparse.Namespace) -> int:
     base = hub.start()
     try:
         session = json.load(_ur.urlopen(base + "/session", timeout=5))
+        hub.ingest_submissions([])
         req = _ur.Request(
             base + "/ingest/submissions",
             data=json.dumps([{"sid": "1", "verdict": "WRONG_ANSWER",
-                              "problem": "A", "rel_s": 60}]).encode(),
+                              "problem": "A", "handle": "tester",
+                              "time": session["started_at"] * 1000 + 1000}]).encode(),
             method="POST",
             headers={"Content-Type": "application/json",
                      _bridge.BRIDGE_TOKEN_HEADER: session["token"]})
@@ -691,7 +706,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--device-preset", default=None,
                        help="DGHub 波形预设名（默认用档案里的；空=只改强度）")
     p_run.add_argument("--allow-device-on-dom-source", action="store_true",
-                       help="允许 C 级数据源（AtCoder/洛谷/牛客扩展）驱动设备，默认禁止")
+                       help="显式允许其余浏览器数据源驱动设备；牛客和 AtCoder 随 --device 启用")
     p_run.add_argument("--device-wait", type=float, default=20.0,
                        help="等待设备插件连接的最长秒数（默认 20）")
     p_run.add_argument("--trust-app-limit", action="store_true",
