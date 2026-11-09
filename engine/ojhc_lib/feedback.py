@@ -52,6 +52,7 @@ HOURLY_CAP = 30
 # 插件页面可调参数（Engine 端再钳一次，硬边界不可绕过）
 TUNING_DEFAULTS = {
     "mode": "simple",            # simple=单次失败也电 + 没 AC 超时递增；pressure=压力算法
+    "no_ac_enabled": True,
     "no_ac_minutes": 20,         # 简单模式下：多久没 AC 电一次
     "no_ac_escalation": 5,       # 每次"没 AC"电击比上一次加多少（% of App 上限），封顶 90%
     "base_intensity": 74, "intensity_step": 4, "max_s": 4,
@@ -76,6 +77,7 @@ def normalize_tuning(raw: dict | None) -> dict | None:
         mode = "simple"
     return {
         "mode": mode,
+        "no_ac_enabled": bool(raw.get("no_ac_enabled", True)),
         "no_ac_minutes": num("no_ac_minutes", 5, 120, 20),
         "no_ac_escalation": num("no_ac_escalation", 0, 20, 5),
         "base_intensity": num("base_intensity", 40, 90, 74),
@@ -156,7 +158,8 @@ class Gate:
         self.st.failure_streak = 0
         self.st.outputs_without_ac = 0
 
-    def evaluate(self, event: Event, state: PressureState, now_s: float) -> Decision:
+    def evaluate(self, event: Event, state: PressureState, now_s: float,
+                 *, record: bool = True) -> Decision:
         d = Decision()
         if not self.profile_ok:
             d.deny.append("未校准/档案过期")
@@ -235,11 +238,15 @@ class Gate:
         d.allowed = False
         d.deny.append("dry-run：未接设备（would-fire）")
 
-        # 记账（模拟"如果真输出"）
+        if record:
+            self.record_output(event, now_s)
+        return d
+
+    def record_output(self, event: Event, now_s: float) -> None:
+        """记一次输出。实机由调用方在收到回执后记账。"""
         self.st.tokens -= 1
         self.st.last_output_s = now_s
         self.st.last_kind_s[event.kind] = now_s
         self.st.hourly.append(now_s)
         self.st.failure_streak = self.st.failure_streak + 1 if event.kind != "verdict.ac" else 0
         self.st.outputs_without_ac += 1
-        return d

@@ -405,6 +405,14 @@ class TestDeviceLink(unittest.IsolatedAsyncioTestCase):
 
         task = asyncio.create_task(fake_plugin())
         self.assertTrue(await link.wait_client(3.0))
+        other_reader, other_writer = await asyncio.open_connection("127.0.0.1", link.port)
+        other_writer.write(b'{"op":"hello","token":"bad"}\n')
+        await other_writer.drain()
+        refused = json.loads(await other_reader.readline())
+        self.assertFalse(refused["accepted"])
+        self.assertEqual(await other_reader.read(), b"")
+        other_writer.close()
+        await other_writer.wait_closed()
         fired = await link.fire("e1", 26, 0.8, preset="", channel="both")
         self.assertTrue(fired.get("ok"), fired)
         self.assertIn("nonce", seen["output"])
@@ -425,6 +433,110 @@ class TestReplay(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(len(result.events), 8)
         self.assertGreaterEqual(result.summary["would_fire"], 1)
         self.assertEqual(result.summary["platform"], "codeforces")
+
+
+class TestLiveOutput(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        self.device = SimpleNamespace(connected=True, tuning={"mode": "simple"},
+                                      fire=AsyncMock(return_value={"ok": True}))
+        meta = platforms_mod.ContestMeta("nowcoder", "1", "test", 7200)
+        prof = profile_mod.new_profile(20, 45, "v3", "both", "")
+        self.runner = runner_mod.SessionRunner(meta, prof,
+            runner_mod.RunOptions(enable_device=True, dry_run=False), device=self.device)
+        self.high = pressure_mod.PressureState(p=60, level=2, confidence="high")
+        self.runner.state = self.high
+
+    async def test_cooldown_uses_real_output_time(self) -> None:
+        events = []
+        await self.runner._emit(feedback_mod.Event("verdict.wa", 10, "A"), events)
+        await self.runner._emit(feedback_mod.Event("verdict.tle", 40, "B"), events)
+        self.assertTrue(events[0][1].allowed)
+        self.assertIn("全局冷却中（10s）", events[1][1].deny)
+        self.device.fire.assert_awaited_once()
+
+    async def test_rejected_output_does_not_take_cooldown(self) -> None:
+        self.device.fire.side_effect = [{"ok": False, "note": "rejected"}, {"ok": True}]
+        events = []
+        await self.runner._emit(feedback_mod.Event("verdict.wa", 10, "A"), events)
+        await self.runner._emit(feedback_mod.Event("verdict.tle", 11, "B"), events)
+        self.assertFalse(events[0][1].allowed)
+        self.assertTrue(events[1][1].allowed)
+        self.assertEqual(self.runner.gate.st.tokens, 4)
+
+    async def test_unknown_output_keeps_cooldown(self) -> None:
+        self.device.fire.return_value = {"ok": False, "outcome_unknown": True, "note": "timeout"}
+        events = []
+        await self.runner._emit(feedback_mod.Event("verdict.wa", 10, "A"), events)
+        await self.runner._emit(feedback_mod.Event("verdict.tle", 40, "B"), events)
+        self.assertIn("输出结果未知：timeout", events[0][1].deny)
+        self.assertIn("全局冷却中（10s）", events[1][1].deny)
+
+    async def test_verdict_takes_priority_over_level_up(self) -> None:
+        from unittest.mock import patch
+        from ojhc_lib.platforms.base import Standings, Submission
+
+        self.runner.state = pressure_mod.PressureState()
+        self.device.tuning["allow_level_up"] = True
+        with patch.object(self.runner, "_pressure", return_value=self.high):
+            events = await self.runner.on_submission(
+                Submission("1", 10, "TIME_LIMIT_EXCEEDED", "A"), Standings())
+        self.assertEqual([event.kind for event, _ in events], ["verdict.tle", "level_up"])
+        self.assertTrue(events[0][1].allowed)
+        self.device.fire.assert_awaited_once()
+
+    async def test_no_ac_switch_keeps_verdict_feedback(self) -> None:
+        self.device.tuning["no_ac_enabled"] = False
+        self.assertIsNone(self.runner.next_timeout_s())
+        self.assertEqual(await self.runner.check_timeouts(7200), [])
+        events = []
+        await self.runner._emit(feedback_mod.Event("verdict.wa", 10, "A"), events)
+        self.assertTrue(events[0][1].allowed)
+
+
+class TestPluginLauncher(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        from runpy import run_path
+
+        plugin = run_path(str(ENGINE_DIR.parent / "starter/ojhc_link/main.py"))
+        self.subprocess = plugin["subprocess"]
+        self.plugin = plugin["OjhPlugin"](plugin["load_manifest"]())
+
+    def test_zero_cap_reaches_both_plugin_and_engine(self) -> None:
+        self.plugin._apply_config({"max_intensity_pct": 0})
+        self.assertEqual(self.plugin.max_pct, 0)
+        self.assertEqual(self.plugin.tuning["hard_cap"], 0)
+
+    async def test_closed_console_reopens_on_contest_change(self) -> None:
+        from unittest.mock import Mock, patch
+
+        self.plugin._apply_config({"auto_start_engine": True, "engine_device": False,
+                                   "engine_url": "https://codeforces.com/contest/1",
+                                   "engine_handle": "tester"})
+        processes = [Mock(), Mock(), Mock()]
+        for proc in processes:
+            proc.poll.return_value = None
+        with patch.object(self.subprocess, "Popen", side_effect=processes) as popen, \
+                patch.object(self.plugin, "_engine_dir", return_value=ENGINE_DIR):
+            await self.plugin.maybe_launch_engine()
+            processes[0].poll.return_value = 1
+            await self.plugin.maybe_launch_engine()
+            await self.plugin.maybe_launch_engine()
+            self.assertEqual(popen.call_count, 1)
+
+            self.plugin._apply_config({"engine_url": "https://ac.nowcoder.com/acm/contest/2"})
+            await self.plugin.maybe_launch_engine()
+            self.assertEqual(popen.call_count, 2)
+            self.assertIn("https://ac.nowcoder.com/acm/contest/2", popen.call_args.args[0])
+            self.assertEqual(popen.call_args.args[0][1], "-u")
+
+            self.plugin._apply_config({"engine_url": "https://codeforces.com/contest/3"})
+            await self.plugin.maybe_launch_engine()
+            processes[1].terminate.assert_called_once()
+            processes[1].wait.assert_called_once_with(timeout=3)
+            self.assertEqual(popen.call_count, 3)
 
 
 if __name__ == "__main__":

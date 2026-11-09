@@ -153,6 +153,8 @@ class DeviceLink:
                 writer.write(b'{"op":"hello_ack","accepted":false,"reason":"bad token"}\n')
                 await writer.drain()
                 return
+            if self._writer is not None:
+                self._writer.close()
             device = hello.get("device") or {}
             self.status = DeviceStatus(
                 connected=bool(device.get("connected")),
@@ -169,26 +171,27 @@ class DeviceLink:
             print(f"[device] 插件已连接（{self.status.plugin} "
                   f"{self.status.plugin_version}）设备={self.status.device_type or '-'} "
                   f"connected={self.status.connected} peer={peer}")
-            await self._read_loop()
+            await self._read_loop(reader)
         except Exception as exc:  # noqa: BLE001
-            self.status.last_error = f"client error: {exc}"
+            if self._writer is writer:
+                self.status.last_error = f"client error: {exc}"
         finally:
-            self.status.connected = False
-            self._reader = self._writer = None
+            if self._writer is writer:
+                self.status.connected = False
+                self._reader = self._writer = None
+                print("[device] 插件已断开，设备输出失效")
             try:
                 writer.close()
             except Exception:
                 pass
-            print("[device] 插件已断开，设备输出失效")
 
-    async def _read_loop(self) -> None:
-        assert self._reader is not None
-        while True:
+    async def _read_loop(self, reader: asyncio.StreamReader) -> None:
+        while self._reader is reader:
             try:
-                line = await self._reader.readline()
+                line = await reader.readline()
             except Exception:
                 return
-            if not line:
+            if not line or self._reader is not reader:
                 return
             try:
                 msg = json.loads(line.decode("utf-8", "replace"))
@@ -248,19 +251,23 @@ class DeviceLink:
         self._used_nonces.add(nonce)
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending[event_id] = fut
-        await self._send({
-            "op": "output", "event_id": event_id,
-            "lease_id": self.lease_id, "nonce": nonce,
-            "intensity_pct": int(intensity_pct),
-            "duration_s": round(float(duration_s), 2),
-            "preset": preset or "", "channel": channel, "label": label,
-        })
         try:
+            await self._send({
+                "op": "output", "event_id": event_id,
+                "lease_id": self.lease_id, "nonce": nonce,
+                "intensity_pct": int(intensity_pct),
+                "duration_s": round(float(duration_s), 2),
+                "preset": preset or "", "channel": channel, "label": label,
+            })
             ack = await asyncio.wait_for(fut, timeout=2.0)
         except asyncio.TimeoutError:
-            self._pending.pop(event_id, None)
             self.status.last_error = "ack timeout"
-            return {"ok": False, "note": "插件 2s 内没有回执"}
+            return {"ok": False, "outcome_unknown": True, "note": "插件 2s 内没有回执"}
+        except OSError as exc:
+            self.status.last_error = str(exc)
+            return {"ok": False, "outcome_unknown": True, "note": "发送期间连接中断"}
+        finally:
+            self._pending.pop(event_id, None)
         if ack.get("ok"):
             self.status.outputs += 1
         else:

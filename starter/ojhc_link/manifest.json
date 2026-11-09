@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "sdk": "1",
   "author": "xuanh08",
-  "description": "算法竞赛++ 的设备执行端：只接受 Engine 的租约化输出指令，租约过期/断开立即归零。",
+  "description": "接收本机算法竞赛++ 引擎的判题反馈，通过 DGHub 联动设备。需配合本机引擎运行。",
   "entry": "main.py",
   "capabilities": {
     "startup_check": true
@@ -18,7 +18,7 @@
           "type": "bool",
           "label": "插件启动时自动打开引擎终端（需填 URL 和 handle）",
           "default": false,
-          "description": "打开后，插件会自己启动一个终端窗口运行 ojhC.py run 并读取输出"
+          "description": "在独立终端启动引擎，终端会显示判题和连接状态"
         },
         {
           "key": "engine_url",
@@ -67,6 +67,12 @@
           "label": "使用压力算法模式（关闭 = 简单模式：单次失败也电 + 没 AC 递增）",
           "default": false,
           "description": "开：按排名/进度/卡题程度触发；关：只看单次失败和没 AC 时长"
+        },
+        {
+          "key": "no_ac_enabled",
+          "type": "bool",
+          "label": "长时间未 AC 时也反馈",
+          "default": true
         },
         {
           "key": "no_ac_minutes",

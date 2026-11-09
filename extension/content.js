@@ -1,7 +1,7 @@
 // 算法竞赛++ 浏览器桥接 - content script
 // 在已登录的 AtCoder / 洛谷 / 牛客 页面上下文里 fetch 平台数据，交给 background 转发给本机 Engine。
 // 设计约束（research/platform-endpoints-v2.md）：
-//   * 每平台 3s 节流，失败指数退避；数据缺失就显式降级，不猜
+//   * CF / 牛客在有新提交待判时加速，其余平台保持 3s；失败指数退避
 //   * 只读页面数据，不接管账号密码；POST 只发往 127.0.0.1 的 Engine
 
 (() => {
@@ -9,27 +9,30 @@
 
   const PLATFORM = detectPlatform();
   function pollBase() {
-    if (PLATFORM === "codeforces") {
+    if (FAST_PLATFORM) {
       return Date.now() < fastUntil ? BURST_POLL_MS : FAST_POLL_MS;
     }
     return POLL_MS;
   }
   if (!PLATFORM) return;
   const CONTEST_ID = contestIdFromUrl();
+  const FAST_PLATFORM = PLATFORM === "codeforces" || PLATFORM === "nowcoder";
 
   const POLL_MS = 3000;
-  const FAST_POLL_MS = 1000;   // Codeforces：扩展盯页面，绕过官方 API 的 2s 限速
-  const BURST_POLL_MS = 300;   // 刚提交/刚打开 my 页时加速
-  const fastUntil = /\/submit\/?$/.test(location.pathname) ? Date.now() + 30000
+  const FAST_POLL_MS = 1000;
+  const BURST_POLL_MS = 300;
+  let fastUntil = /\/submit\/?$/.test(location.pathname) ? Date.now() + 30000
     : /\/my\/?$/.test(location.pathname) ? Date.now() + 20000 : 0;
-  let lastCfPage = null;
+  let pendingIds = new Set();
+  let lastToken = null;
+  const lastPosted = new Map();
   const KNOWN_VERDICTS = [
     "AC", "WA", "TLE", "MLE", "RE", "CE", "WJ", "QLE", "OLE", "IE",
     "WRONG_ANSWER", "TIME_LIMIT_EXCEEDED", "RUNTIME_ERROR", "COMPILATION_ERROR",
     "答案正确", "答案错误", "运行超时", "内存超限", "运行错误", "编译错误"
   ];
 
-  let backoff = PLATFORM === "codeforces" ? FAST_POLL_MS : POLL_MS;
+  let backoff = pollBase();
   let lastError = "";
 
   function detectPlatform() {
@@ -60,7 +63,14 @@
       lastError = (result && result.error) || "post failed";
       return false;
     }
-    lastError = "";
+    return true;
+  }
+
+  async function postChanged(path, payload, token) {
+    const snapshot = JSON.stringify(payload);
+    if (lastPosted.get(path) === snapshot) return true;
+    if (!await post(path, payload, token)) return false;
+    lastPosted.set(path, snapshot);
     return true;
   }
 
@@ -198,31 +208,26 @@
   // ------------------------------------------------------------ 牛客
   async function collectNowcoder(session) {
     const payload = { meta: { name: document.title.replace(/\s*-\s*牛客网\s*$/, "").trim() } };
-    try {
-      const resp = await fetch(
-        `/acm/contest/status-list?token=&id=${CONTEST_ID}&page=1&pageSize=50`
-        + `&searchUserName=${encodeURIComponent(session.handle)}`,
-        { credentials: "same-origin", headers: { "X-Requested-With": "XMLHttpRequest" } });
-      if (!resp.ok) { lastError = `status-list HTTP ${resp.status}`; return payload; }
-      const data = await resp.json();
-      const items = data.data?.data;
-      if (data.code !== 0 || !Array.isArray(items)) {
-        lastError = "status-list returned no submission list";
-        return payload;
-      }
-      const handle = session.handle.trim().toLowerCase();
-      payload.submissions = items
-        .filter((it) => it?.submissionId && String(it.userName).trim().toLowerCase() === handle)
-        .map((it) => ({
-          sid: String(it.submissionId),
-          verdict: it.statusMessage || "UNKNOWN",
-          problem: it.index || "?",
-          time: it.submitTime
-        }));
-      // 牛客没有可用的实时榜单接口（research: rank/rank-list/scoreboard 全 404）
-    } catch (e) {
-      lastError = "status-list failed";
+    const resp = await fetch(
+      `/acm/contest/status-list?token=&id=${CONTEST_ID}&page=1&pageSize=50`
+      + `&searchUserName=${encodeURIComponent(session.handle)}`,
+      { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(8000),
+        headers: { "X-Requested-With": "XMLHttpRequest" } });
+    if (!resp.ok) throw new Error(`牛客提交列表 HTTP ${resp.status}`);
+    const data = await resp.json();
+    const items = data.data?.data;
+    if (data.code !== 0 || !Array.isArray(items)) {
+      throw new Error("牛客没有返回提交列表，请检查登录状态");
     }
+    const handle = session.handle.trim().toLowerCase();
+    payload.submissions = items
+      .filter((it) => it?.submissionId && String(it.userName).trim().toLowerCase() === handle)
+      .map((it) => ({
+        sid: String(it.submissionId),
+        verdict: it.statusMessage || "UNKNOWN",
+        problem: it.index || "?",
+        time: it.submitTime
+      }));
     return payload;
   }
 
@@ -248,7 +253,7 @@
   async function collectCodeforces() {
     const contestPath = location.pathname.startsWith("/gym/") ? "gym" : "contest";
     const resp = await fetch(`/${contestPath}/${CONTEST_ID}/my`, {
-      credentials: "same-origin", cache: "no-store"
+      credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(8000)
     });
     if (!resp.ok || resp.redirected) throw new Error(`CF /my: HTTP ${resp.status}`);
     const html = await resp.text();
@@ -290,33 +295,48 @@
     for (;;) {
       let session = null;
       try {
-        session = await send({ type: "get_session", force: false });
+        session = await send({
+          type: "get_session", collector: { platform: PLATFORM, contestId: CONTEST_ID }
+        });
       } catch (e) {
         lastError = "engine not reachable";
       }
       if (!session || session.platform !== PLATFORM || String(session.contest_id) !== String(CONTEST_ID)) {
-        await sleep(pollBase());
+        await sleep(POLL_MS);
         continue;
       }
+      if (session.token !== lastToken) {
+        lastToken = session.token;
+        lastPosted.clear();
+        pendingIds.clear();
+      }
+      lastError = "";
       try {
         const payload = await COLLECTORS[PLATFORM](session);
-        let ok = true;
+        const submissions = payload.cfPage || payload.submissions;
+        if (FAST_PLATFORM && submissions) {
+          const pending = submissions.filter(item =>
+            /^(TESTING|PENDING)$|等待|判题中|评测中|排队|运行中|编译中/i.test(item.verdict));
+          if (pending.some(item => !pendingIds.has(item.sid))) fastUntil = Date.now() + 30000;
+          pendingIds = new Set(pending.map(item => item.sid));
+        }
         if (payload.cfPage) {
-          const snapshot = JSON.stringify(payload.cfPage);
-          if (!lastCfPage || lastCfPage.token !== session.token || lastCfPage.snapshot !== snapshot) {
-            ok = await post("/ingest/cf-page", payload.cfPage, session.token);
-            if (ok) lastCfPage = { token: session.token, snapshot };
-          }
+          await postChanged("/ingest/cf-page", payload.cfPage, session.token);
         }
-        if (payload.meta) ok = (await post("/ingest/meta", payload.meta)) && ok;
-        if (payload.standings) ok = (await post("/ingest/standings", payload.standings)) && ok;
+        if (payload.meta) await postChanged("/ingest/meta", payload.meta, session.token);
         if (payload.submissions) {
-          ok = (await post("/ingest/submissions", payload.submissions, session.token)) && ok;
+          await postChanged("/ingest/submissions", payload.submissions, session.token);
         }
-        backoff = ok ? pollBase() : Math.min(backoff * 2, 30000);
+        if (payload.standings) await postChanged("/ingest/standings", payload.standings, session.token);
+        if (!submissions && !payload.standings && !lastError) lastError = "比赛页没有返回可用数据";
       } catch (e) {
         lastError = String(e);
-        backoff = Math.min(backoff * 2, 30000);
+      }
+      backoff = lastError ? Math.min(Math.max(POLL_MS, backoff * 2), 30000) : pollBase();
+      try {
+        await send({ type: "collector_status", token: session.token, ok: !lastError, error: lastError });
+      } catch (e) {
+        // 扩展重载后由新脚本恢复采集。
       }
       await sleep(backoff);
     }

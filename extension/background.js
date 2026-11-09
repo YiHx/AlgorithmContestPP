@@ -5,6 +5,21 @@
 
 const PORTS = Array.from({ length: 10 }, (_, i) => 8765 + i);
 let cached = null; // { base, session }
+let collector = null;
+let collectionStatus = null;
+
+function claimCollector(page, session, tab) {
+  if (!tab || page.platform !== session.platform || page.contestId !== String(session.contest_id)) {
+    return false;
+  }
+  const now = Date.now();
+  if (collector?.token === session.token && collector.tabId !== tab.id
+      && collector.expiresAt > now && !(tab.active && !collector.active)) {
+    return false;
+  }
+  collector = { token: session.token, tabId: tab.id, active: tab.active, expiresAt: now + 12000 };
+  return true;
+}
 
 async function fetchJson(url, options) {
   const resp = await fetch(url, Object.assign({ cache: "no-store" }, options || {}));
@@ -62,12 +77,30 @@ async function post(path, payload, token) {
   }
 }
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
       if (msg && msg.type === "get_session") {
         const result = msg.force ? await discover() : await refreshSession();
-        sendResponse(result ? result.session : null);
+        const session = result?.session;
+        if (!session || (msg.collector && !claimCollector(msg.collector, session, sender.tab))) {
+          sendResponse(null);
+        } else if (msg.includeCollector) {
+          const status = collectionStatus?.token === session.token ? collectionStatus : null;
+          sendResponse({ ...session, collector: status });
+        } else {
+          sendResponse(session);
+        }
+      } else if (msg && msg.type === "collector_status") {
+        if (collector?.token === msg.token && collector.tabId === sender.tab?.id) {
+          const lastSuccessAt = collectionStatus?.token === msg.token ? collectionStatus.lastSuccessAt : null;
+          collectionStatus = {
+            token: msg.token,
+            lastSuccessAt: msg.ok ? Date.now() : lastSuccessAt,
+            error: msg.ok ? "" : String(msg.error || "采集失败").slice(0, 160)
+          };
+        }
+        sendResponse({ ok: true });
       } else if (msg && msg.type === "post") {
         sendResponse(await post(msg.path, msg.payload, msg.token));
       } else {

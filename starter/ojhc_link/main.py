@@ -38,6 +38,7 @@ HARD_CAP_PCT = 100           # 代码硬上限（配置改不动；App 上限本
 
 TUNING_DEFAULTS = {
     "mode": "simple",       # simple=单次失败也电 + 没 AC 递增；pressure=压力算法
+    "no_ac_enabled": True,
     "no_ac_minutes": 20,    # 简单模式间隔
     "no_ac_escalation": 5,  # 每次没 AC 电击递增
     "base_intensity": 74,   # App 上限的百分比（s=2 档）
@@ -66,6 +67,7 @@ def normalize_tuning(cfg: dict) -> dict:
             mode = "simple"
     t = {
         "mode": mode,
+        "no_ac_enabled": bool(cfg.get("no_ac_enabled", TUNING_DEFAULTS["no_ac_enabled"])),
         "no_ac_minutes": num("no_ac_minutes", 5, 120, TUNING_DEFAULTS["no_ac_minutes"]),
         "no_ac_escalation": num("no_ac_escalation", 0, 20, TUNING_DEFAULTS["no_ac_escalation"]),
         "base_intensity": num("base_intensity", 40, 90, TUNING_DEFAULTS["base_intensity"]),
@@ -75,7 +77,7 @@ def normalize_tuning(cfg: dict) -> dict:
         "hourly_cap": num("hourly_cap", 5, 60, TUNING_DEFAULTS["hourly_cap"]),
         "allow_level_up": bool(cfg.get("allow_level_up", TUNING_DEFAULTS["allow_level_up"])),
         "preset": str(cfg.get("preset") or TUNING_DEFAULTS["preset"])[:32],
-        "hard_cap": min(100, max(0, int(cfg.get("max_intensity_pct", 90) or 90))),
+        "hard_cap": num("max_intensity_pct", 0, HARD_CAP_PCT, 90),
     }
     return t
 
@@ -128,8 +130,8 @@ class OjhPlugin:
     def __init__(self, manifest: dict) -> None:
         self.manifest = manifest
         self.cfg = schema_defaults(manifest)
-        self.max_pct = int(min(int(self.cfg.get("max_intensity_pct", 90) or 90), HARD_CAP_PCT))
         self.tuning = normalize_tuning(self.cfg)
+        self.max_pct = self.tuning["hard_cap"]
         self.estop = False
         self.lease_id = 0
         self.lease_at = 0.0
@@ -148,6 +150,7 @@ class OjhPlugin:
         self._engine_proc = None          # 由插件启动的引擎子进程
         self._launch_attempted = False
         self._launch_dirty = False        # 启动参数变更，需要重启引擎
+        self._launch_lock = asyncio.Lock()
 
     # -------------------------------------------------- DGHub
     async def connect_dghub(self) -> None:
@@ -213,8 +216,11 @@ class OjhPlugin:
                     self.device_type = msg.get("device_type") or ""
                     await self.push_status()
                 elif op in ("config", "config_changed"):
+                    previous_cap = self.max_pct
                     changed = self._handle_config_msg(msg)
                     if changed is not None:
+                        if previous_cap > 0 and self.max_pct == 0:
+                            await self.zero_device("插件硬上限设为 0")
                         if self.engine_writer is not None:
                             await self._engine_send({"op": "tuning", "tuning": self.tuning})
                         await self._dg_log(
@@ -260,7 +266,7 @@ class OjhPlugin:
             return {str(key): msg.get("value")}
         return None
 
-    LAUNCH_KEYS = ("engine_url", "engine_handle", "engine_device",
+    LAUNCH_KEYS = ("auto_start_engine", "engine_url", "engine_handle", "engine_device",
                    "engine_virtual", "engine_python", "engine_dir")
 
     def _apply_config(self, data: dict) -> None:
@@ -270,9 +276,8 @@ class OjhPlugin:
             if key in self.LAUNCH_KEYS and self.cfg.get(key) != value:
                 self._launch_dirty = True
             self.cfg[key] = value
-        self.max_pct = int(min(int(self.cfg.get("max_intensity_pct", 90) or 90),
-                              HARD_CAP_PCT))
         self.tuning = normalize_tuning(self.cfg)
+        self.max_pct = self.tuning["hard_cap"]
 
     async def push_status(self) -> None:
         if not self.cfg.get("show_status", True):
@@ -429,83 +434,57 @@ class OjhPlugin:
         return args
 
     async def maybe_launch_engine(self) -> None:
-        """按插件页配置启动引擎（新终端窗口）。失败会写到 DGHub 运行日志。"""
-        if not self.cfg.get("auto_start_engine", False):
-            return
-        force = False
-        # 启动参数（URL/handle/设备/虚拟）变更 → 重启由插件拉起的引擎
-        if (self._launch_dirty and self._engine_proc is not None
-                and self._engine_proc.poll() is None):
-            await self._dg_log("启动器：启动参数已变更，重启引擎终端…")
-            try:
-                self._engine_proc.terminate()
-            except Exception:
-                pass
-            self._engine_proc = None
-            self._launch_attempted = False
-            self._launch_dirty = False
-            self.engine_reader = None
-            self.engine_writer = None
-            force = True
-        if self.engine_writer is not None:      # 引擎已经连上
-            return
-        if self._engine_proc is not None:
-            if self._engine_proc.poll() is None:
+        """只在启动或改启动参数时打开终端。"""
+        async with self._launch_lock:
+            if not self.running or not self.cfg.get("auto_start_engine", False):
                 return
-            if not getattr(self, "_logged_engine_exit", False):
-                self._logged_engine_exit = True
-                await self._dg_log(
-                    "启动器：引擎已退出（窗口里的错误可查看）；改配置或重载插件可重试",
-                    "warning")
-            return
-        if self._launch_attempted:
-            if not getattr(self, "_logged_attempted", False):
-                self._logged_attempted = True
-                await self._dg_log("启动器：本次已尝试启动引擎，等待它连接…")
-            return
-        now = time.monotonic()
-        if not force and now - getattr(self, "_last_launch_try", 0.0) < 10.0:
-            return
-        self._last_launch_try = now
-        args = self._build_engine_args()
-        engine_dir = self._engine_dir()
-        if not args or engine_dir is None:
-            await self._dg_log("启动器：URL/用户名未填，或找不到引擎目录（ojhC.py 所在目录）", "warning")
-            return
-        flags = 0
-        spawn_args = args
-        if os.name == "nt":
-            flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
-            log_dir = engine_dir / ".local"
-            try:
-                log_dir.mkdir(parents=True, exist_ok=True)
-            except OSError:
-                pass
-            log_path = log_dir / "launcher_last.log"
-            bat_path = log_dir / "launch_engine.bat"
-            # 用 .bat 启动，避免 cmd 引号转义问题；输出直接显示在窗口里
-            bat = (
-                "@echo off\r\n"
-                f'cd /d "{engine_dir}"\r\n'
-                f'"{args[0]}" ' + " ".join(args[1:]) + "\r\n"
-                "echo.\r\n"
-                "echo [engine exited] press any key to close\r\n"
-                "pause >nul\r\n"
-            )
-            try:
-                bat_path.write_text(bat, encoding="ascii", errors="replace")
-            except OSError:
-                pass
-            spawn_args = ["cmd.exe", "/c", str(bat_path)]
-        try:
-            self._engine_proc = subprocess.Popen(
-                spawn_args, cwd=str(engine_dir), creationflags=flags)
+            if self._launch_dirty:
+                if not await self._stop_launched_engine("启动参数变更"):
+                    return
+                self._launch_attempted = False
+                self._launch_dirty = False
+            if self._engine_proc is not None:
+                code = self._engine_proc.poll()
+                if code is not None:
+                    self._engine_proc = None
+                    await self._dg_log(
+                        f"启动器：引擎已退出（退出码 {code}）；改比赛配置或重载插件可重试", "warning")
+                return
+            if self.engine_writer is not None or self._launch_attempted:
+                return
+
+            args = self._build_engine_args()
+            engine_dir = self._engine_dir()
             self._launch_attempted = True
-            self._launch_dirty = False
-            await self._dg_log("启动器：已打开引擎终端 → " + " ".join(args[2:])
-                               + f"（日志：engine/.local/launcher_last.log）")
-        except Exception as exc:  # noqa: BLE001
-            await self._dg_log(f"启动器：启动引擎失败：{exc}", "warning")
+            if not args or engine_dir is None:
+                await self._dg_log("启动器：URL/用户名未填，或找不到引擎目录（ojhC.py 所在目录）", "warning")
+                return
+            try:
+                # 直接持有 Python 进程，改配置时能关掉引擎本身并释放端口。
+                self._engine_proc = subprocess.Popen(
+                    [args[0], "-u", *args[1:]], cwd=str(engine_dir),
+                    creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+                await self._dg_log("启动器：已打开引擎终端 → " + " ".join(args[2:]))
+            except OSError as exc:
+                await self._dg_log(f"启动器：启动引擎失败：{exc}", "warning")
+
+    async def _stop_launched_engine(self, reason: str) -> bool:
+        proc = self._engine_proc
+        if proc is not None and proc.poll() is None:
+            self.estop = True
+            await self.zero_device(reason)
+            if self.engine_writer is not None:
+                self.engine_writer.close()
+                self.engine_reader = self.engine_writer = None
+            try:
+                proc.terminate()
+                await asyncio.to_thread(proc.wait, timeout=3)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                if proc.poll() is None:
+                    await self._dg_log(f"启动器：旧引擎仍在运行：{exc}", "warning")
+                    return False
+        self._engine_proc = None
+        return True
 
     async def find_and_connect_engine(self, timeout_s: float = 120.0,
                                       engine_port: int | None = None,
@@ -533,7 +512,6 @@ class OjhPlugin:
             reader, writer = await asyncio.open_connection(host, port)
         except Exception:
             return False
-        self.engine_reader, self.engine_writer = reader, writer
         hello = {
             "op": "hello", "token": token, "plugin": PLUGIN_ID,
             "version": PLUGIN_VERSION,
@@ -543,17 +521,21 @@ class OjhPlugin:
                 "max_a": 0, "max_b": 0,
             },
         }
-        await self._engine_send(hello)
         try:
+            writer.write((json.dumps(hello, ensure_ascii=False) + "\n").encode())
+            await writer.drain()
             line = await asyncio.wait_for(reader.readline(), timeout=5)
-        except asyncio.TimeoutError:
+            ack = json.loads(line) if line else {}
+            if not isinstance(ack, dict) or ack.get("op") != "hello_ack" or not ack.get("accepted"):
+                reason = ack.get("reason") if isinstance(ack, dict) else "响应格式错误"
+                await self._dg_log(f"Engine 拒绝连接：{reason}", "warning")
+                return False
+            self.engine_reader, self.engine_writer = reader, writer
+        except (OSError, ValueError, asyncio.TimeoutError):
             return False
-        if not line:
-            return False
-        ack = json.loads(line)
-        if ack.get("op") != "hello_ack" or not ack.get("accepted"):
-            await self._dg_log(f"Engine 拒绝连接：{ack.get('reason')}", "warning")
-            return False
+        finally:
+            if self.engine_writer is not writer:
+                writer.close()
         self.link_info = {"host": host, "port": port}
         # 新会话 = 新的信任建立：清掉上一场结束时的 estop 标记
         self.estop = False
@@ -562,13 +544,18 @@ class OjhPlugin:
         return True
 
     async def engine_loop(self) -> None:
-        assert self.engine_reader is not None
+        reader = self.engine_reader
+        assert reader is not None
         last_watchdog = 0.0
-        while self.running:
+        while self.running and self.engine_reader is reader:
             try:
-                line = await asyncio.wait_for(self.engine_reader.readline(), timeout=0.5)
+                line = await asyncio.wait_for(reader.readline(), timeout=0.5)
             except asyncio.TimeoutError:
                 line = None
+            except OSError:
+                line = b""
+            if self.engine_reader is not reader:
+                return
             if line == b"":
                 # 不退出：归零后回到等待，下一场 Engine 启动可直接复用
                 await self._dg_log("Engine 已断开，设备归零，回到等待", "warning")
@@ -628,17 +615,15 @@ class OjhPlugin:
                     break
                 # Engine 断开：归零后回到等待（不退出进程，方便下一场直接复用）
                 await self._dg_log("Engine 已断开，回到等待状态", "warning")
+                if self.engine_writer is not None:
+                    self.engine_writer.close()
                 self.engine_reader = None
                 self.engine_writer = None
                 await asyncio.sleep(2.0)
         finally:
             await self.zero_device("plugin exit")
-            if self._engine_proc is not None and self._engine_proc.poll() is None:
-                try:
-                    self._engine_proc.terminate()
-                    print("[launcher] 已停止由插件启动的 Engine")
-                except Exception:
-                    pass
+            async with self._launch_lock:
+                await self._stop_launched_engine("plugin exit")
             if self.dg_ws is not None:
                 try:
                     await self.dg_ws.close()

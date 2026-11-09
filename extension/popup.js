@@ -11,7 +11,7 @@ async function refresh(force) {
   setStatus("检查 Engine…", false);
   let session = null;
   try {
-    session = await chrome.runtime.sendMessage({ type: "get_session", force: !!force });
+    session = await chrome.runtime.sendMessage({ type: "get_session", force: !!force, includeCollector: true });
   } catch (e) {
     setStatus("无法联系扩展后台", false);
     return;
@@ -22,13 +22,15 @@ async function refresh(force) {
     return;
   }
   setStatus(`已连接 Engine · ${session.platform} / ${session.contest_id}`, true);
+  const lastSuccess = session.collector?.lastSuccessAt;
   detailEl.textContent = [
     `handle: ${session.handle}`,
     `时长: ${Math.round((session.duration_s || 0) / 60)} 分钟`,
-    `Engine: ${session.base || ""}`,
-    "",
-    "现在打开对应平台的比赛页面并保持登录，扩展会自动上报。"
-  ].join("\n");
+    `Engine: ${session.url || ""}`,
+    lastSuccess ? `上次成功采集: ${new Date(lastSuccess).toLocaleTimeString()}`
+      : "等待对应比赛页首次采集，请保持页面打开并登录。",
+    session.collector?.error ? `最近一次采集失败: ${session.collector.error}` : ""
+  ].filter(Boolean).join("\n");
 }
 
 document.getElementById("reconnect").addEventListener("click", () => refresh(true));

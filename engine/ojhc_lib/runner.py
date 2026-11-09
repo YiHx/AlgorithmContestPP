@@ -105,6 +105,7 @@ class SessionRunner:
         self.no_submit_armed = True
         self.no_ac_armed = True
         self._no_ac_shocks = 0
+        self._started_monotonic = time.monotonic()
         self.result = RunResult(session_id=session_id)
         self.degraded: list[str] = []
         self._last_snapshot_rel: float | None = None
@@ -139,12 +140,11 @@ class SessionRunner:
 
         prev_level = self.state.level
         self.state = self._pressure(elapsed, standings)
-        if self.state.level > prev_level:
-            await self._emit(Event("level_up", elapsed, f"L{self.state.level}"), out)
-
         event = Event(kind=kind, rel_s=elapsed,
                       detail=f"题 {sub.problem}" + (" AC" if kind == "verdict.ac" else f" {sub.verdict}"))
         await self._emit(event, out)
+        if self.state.level > prev_level:
+            await self._emit(Event("level_up", elapsed, f"L{self.state.level}"), out)
         return out
 
     async def _emit(self, event: Event, out: list[tuple[Event, Decision]]) -> None:
@@ -154,7 +154,9 @@ class SessionRunner:
                 and bool(plugin_tuning.get("allow_level_up"))):
             event.s = 2      # 开启“等级上升也电”时给一个轻档脉冲
         self.gate.set_tuning(plugin_tuning)
-        decision = self.gate.evaluate(event, self.state, event.rel_s)
+        output_time = (time.monotonic() - self._started_monotonic
+                       if self.options.enable_device else event.rel_s)
+        decision = self.gate.evaluate(event, self.state, output_time, record=False)
         if decision.would_fire and plugin_tuning:
             base = int(plugin_tuning.get("base_intensity", 74))
             step = int(plugin_tuning.get("intensity_step", 4))
@@ -168,10 +170,9 @@ class SessionRunner:
             if decision.intensity <= 0:
                 decision.would_fire = False
                 decision.deny = ["插件调参后强度为 0"]
-            elif event.kind == "timeout_no_ac":
-                self._no_ac_shocks += 1
 
         # 真实输出：闸门 would_fire + 本会话显式启用 + 设备链路可用
+        output_maybe_sent = False
         if decision.would_fire and self.options.enable_device:
             if self.source_level == "C" and not self.options.allow_device_on_c:
                 decision.would_fire = False
@@ -188,6 +189,7 @@ class SessionRunner:
                     preset=((plugin_tuning.get("preset") if plugin_tuning else "") 
                             or self.options.device_preset),
                     channel=channel, label=f"OJHC {event.kind}")
+                output_maybe_sent = bool(ack.get("ok") or ack.get("outcome_unknown"))
                 if ack.get("ok"):
                     decision.allowed = True
                     decision.deny = []
@@ -198,7 +200,14 @@ class SessionRunner:
                         print(f"[device] 插件提示：{ack.get('note')}")
                 else:
                     decision.would_fire = False
-                    decision.deny = [f"设备拒绝：{ack.get('note')}"]
+                    label = "输出结果未知" if output_maybe_sent else "设备拒绝"
+                    decision.deny = [f"{label}：{ack.get('note')}"]
+
+        simulated_output = decision.would_fire and not self.options.enable_device
+        if output_maybe_sent or simulated_output:
+            self.gate.record_output(event, output_time)
+        if event.kind == "timeout_no_ac" and (decision.allowed or simulated_output):
+            self._no_ac_shocks += 1
 
         out.append((event, decision))
         self.result.events.append(event)
@@ -246,6 +255,9 @@ class SessionRunner:
             return float(tuning["no_ac_minutes"]) * 60
         return self.no_ac_s
 
+    def _no_ac_enabled(self) -> bool:
+        return bool((self._plugin_tuning() or {}).get("no_ac_enabled", True))
+
     def next_timeout_s(self) -> float | None:
         """下一个"时间型事件"应该发生的比赛内时刻（秒）；没有则 None。
 
@@ -253,6 +265,8 @@ class SessionRunner:
         回放按这个时刻推进虚拟时钟，保证"到点就电"，而不是等下一次提交。
         """
         if self._mode() == "simple":
+            if not self._no_ac_enabled():
+                return None
             interval = self._no_ac_interval_s()
             last_shock = getattr(self, "_last_no_ac_shock", -1e9)
             due_ac = self.last_ac_s + interval
@@ -262,13 +276,15 @@ class SessionRunner:
         candidates: list[float] = []
         if self.no_submit_armed:
             candidates.append(self.last_sub_s + self.options.no_submit_minutes * 60)
-        if self.no_ac_armed:
+        if self.no_ac_armed and self._no_ac_enabled():
             candidates.append(self.last_ac_s + self.no_ac_s)
         return min(candidates) if candidates else None
 
     async def check_timeouts(self, elapsed: float) -> list[tuple[Event, Decision]]:
         out: list[tuple[Event, Decision]] = []
         if self._mode() == "simple":
+            if not self._no_ac_enabled():
+                return out
             # 简单模式：只要「距上次 AC 超过设定时间」就电一次，之后按同样间隔重复
             interval = self._no_ac_interval_s()
             last_shock = getattr(self, "_last_no_ac_shock", -1e9)
@@ -281,7 +297,7 @@ class SessionRunner:
             self.no_submit_armed = False
             await self._emit(Event("timeout_no_submit", elapsed,
                                    f"距上次提交 {fmt_time(elapsed - self.last_sub_s)}"), out)
-        if self.no_ac_armed and elapsed - self.last_ac_s >= self.no_ac_s:
+        if self.no_ac_armed and self._no_ac_enabled() and elapsed - self.last_ac_s >= self.no_ac_s:
             self.no_ac_armed = False
             await self._emit(Event("timeout_no_ac", elapsed,
                                    f"距上次 AC {fmt_time(elapsed - self.last_ac_s)}"), out)

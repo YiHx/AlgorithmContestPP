@@ -212,6 +212,7 @@ class BridgeAdapter:
         self.hub = hub
         self.platform = hub.platform
         self.has_submission_baseline = self.platform in SUBMISSION_SNAPSHOT_PLATFORMS
+        self.poll_sleep_s = 0.4 if self.has_submission_baseline else 2.5
 
     async def load_meta(self) -> ContestMeta:
         return ContestMeta(
