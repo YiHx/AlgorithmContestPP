@@ -1,5 +1,13 @@
 # 算法竞赛++
 
+[![Release](https://img.shields.io/github/v/release/YiHx/AlgorithmContestPP)](https://github.com/YiHx/AlgorithmContestPP/releases/latest)
+[![MIT License](https://img.shields.io/github/license/YiHx/AlgorithmContestPP)](LICENSE)
+[![CI](https://github.com/YiHx/AlgorithmContestPP/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/YiHx/AlgorithmContestPP/actions/workflows/ci.yml)
+
+[![Moe Counter 访问计数](https://count.getloli.com/get/@YiHx-AlgorithmContestPP?theme=rule34)](https://github.com/journey-ad/Moe-Counter)
+
+**简体中文** · [English](README.en.md)
+
 算法竞赛++ 把 OJ 的判题结果接到 DGHub。刷题时收到 WA、TLE 或 RE，郊狼可以给一次短反馈。也可以关掉设备输出，只在终端看判题和赛后记录。
 
 ## 安装
