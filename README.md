@@ -15,6 +15,8 @@ python -m pip install -r requirements.txt
 
 牛客、AtCoder 和洛谷需要浏览器扩展。Codeforces 装了扩展可以走快速通道。Chrome、Edge 和 Firefox 共用仓库里的 `extension` 目录，按你的浏览器选对应的[安装步骤](extension/README.md#安装浏览器扩展)。
 
+如果不知道从哪一步开始，可以把[仓库链接](https://github.com/YiHx/AlgorithmContestPP)复制到 DSH（DeepSeek Harness），告诉大肥鱼你用的是哪个浏览器，请它按 README 帮你安装。仓库链接打不开时，也可以把已经解压的源码目录交给它。
+
 ## 开一场
 
 1. 在 DGHub 的插件中心打开「算法竞赛++」的配置页。
