@@ -8,9 +8,9 @@
 
 [简体中文](README.md) · **English**
 
-I made this DGHub plugin to hook up contest verdicts to a DG-Lab Coyote. A WA, TLE, or RE can trigger a short pulse. If you just want to see whether the verdicts come through, run a session with device output off.
+Algorithm Contest++ is a DGHub plugin that connects online judge verdicts to a DG-Lab Coyote. Wrong Answer (WA), Time Limit Exceeded (TLE), and Runtime Error (RE) verdicts can trigger a short pulse. With device output disabled, verdicts are still available in the terminal and the session record.
 
-## How to install it
+## Installation
 
 You'll need [DGHub](http://dghub.top/) and Python 3.10 or newer on Windows.
 
@@ -18,9 +18,9 @@ You'll need [DGHub](http://dghub.top/) and Python 3.10 or newer on Windows.
 2. Download and unzip `Source code (zip)` from the same page. Open PowerShell in the extracted source folder and run `python -m pip install -r requirements.txt`.
 3. Open the plugin settings and point the engine directory at the extracted `engine` folder.
 
-If you've already cloned the repo, you can run `.\starter\install_plugin.ps1 -Plugin ojhc_link` from the repo root to install the plugin. Restart DGHub afterward.
+To install from a local clone, run `.\starter\install_plugin.ps1 -Plugin ojhc_link` from the repository root, then restart DGHub.
 
-Nowcoder, AtCoder, and Luogu need the browser extension. On Codeforces it's optional, but it gets verdicts to the engine faster. All three browsers use the `extension` folder from the source archive.
+Nowcoder, AtCoder, and Luogu require the browser extension. Codeforces works through its official API and can receive verdicts sooner with the extension. Chrome, Edge, and Firefox all use the `extension` folder from the source archive.
 
 | Browser | How to load the extension |
 | --- | --- |
@@ -28,7 +28,7 @@ Nowcoder, AtCoder, and Luogu need the browser extension. On Codeforces it's opti
 | Edge 121+ | Open `edge://extensions`, turn on Developer mode, and select **Load unpacked**. Choose the `extension` folder. |
 | Firefox 140+ | Open `about:debugging#/runtime/this-firefox`, select **Load Temporary Add-on**, and choose `extension/manifest.json`. Reload the add-on after restarting Firefox. A permanent install requires a Mozilla-signed XPI. |
 
-If you're using DSH (DeepSeek Harness), you can paste the [repository link](https://github.com/YiHx/AlgorithmContestPP) into DSH, tell 大肥鱼 which browser you use, and ask it to install the project using this README. If it can't open the link, give it the extracted source folder.
+For installation help, share the repository link and your browser name with 大肥鱼 in DSH (DeepSeek Harness) and ask it to follow this guide. You can also provide the extracted source folder.
 
 ## Start a session
 
