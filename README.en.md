@@ -8,20 +8,19 @@
 
 [简体中文](README.md) · **English**
 
-Algorithm Contest++ connects online judge verdicts to DGHub. When a submission gets a Wrong Answer, Time Limit Exceeded, or Runtime Error, a DG-Lab Coyote can give a short pulse. You can turn device output off and follow verdicts in the terminal or review the session later.
+I made this DGHub plugin to hook up contest verdicts to a DG-Lab Coyote. A WA, TLE, or RE can trigger a short pulse. If you just want to see whether the verdicts come through, run a session with device output off.
 
-## Install
+## How to install it
 
-Install [DGHub](http://dghub.top/) and Python 3.10 or newer on Windows. Run these commands in PowerShell from the repository root, then restart DGHub.
+You'll need [DGHub](http://dghub.top/) and Python 3.10 or newer on Windows.
 
-```powershell
-python -m pip install -r requirements.txt
-.\starter\install_plugin.ps1 -Plugin ojhc_link
-```
+1. Download `algorithmcontestpp-dghub.zip` from [GitHub Releases](https://github.com/YiHx/AlgorithmContestPP/releases/latest) and import it in the DGHub Plugin Center.
+2. Download and unzip `Source code (zip)` from the same page. Open PowerShell in the extracted source folder and run `python -m pip install -r requirements.txt`.
+3. Open the plugin settings and point the engine directory at the extracted `engine` folder.
 
-If you download the DGHub plugin ZIP from [GitHub Releases](https://github.com/YiHx/AlgorithmContestPP/releases), you can import it directly in the DGHub Plugin Center and skip the second command. The ZIP still needs the local engine. Download the source archive and point the plugin's engine directory at its `engine` folder.
+If you've already cloned the repo, you can run `.\starter\install_plugin.ps1 -Plugin ojhc_link` from the repo root to install the plugin. Restart DGHub afterward.
 
-Nowcoder, AtCoder, and Luogu use a browser extension. Codeforces can use it for faster verdicts, with the official API as a fallback. Chrome, Edge, and Firefox all use the same `extension` folder.
+Nowcoder, AtCoder, and Luogu need the browser extension. On Codeforces it's optional, but it gets verdicts to the engine faster. All three browsers use the `extension` folder from the source archive.
 
 | Browser | How to load the extension |
 | --- | --- |

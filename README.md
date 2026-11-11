@@ -8,22 +8,21 @@
 
 **简体中文** · [English](README.en.md)
 
-算法竞赛++ 把 OJ 的判题结果接到 DGHub。刷题时收到 WA、TLE 或 RE，郊狼可以给一次短反馈。也可以关掉设备输出，只在终端看判题和赛后记录。
+我做了个 DGHub 插件，把刷题时的判题结果接到郊狼上。WA、TLE、RE 可以触发一次短反馈。想先看看能不能收到判题，关掉「带设备输出」跑一场就行。
 
-## 安装
+## 怎么装
 
-准备一台 Windows 电脑，装好 [DGHub](http://dghub.top/) 和 Python 3.10 或更新版本。用 PowerShell 在仓库目录执行下面两行，装完重开 DGHub。
+先在 Windows 上装好 [DGHub](http://dghub.top/) 和 Python 3.10 或更新版本。
 
-```powershell
-python -m pip install -r requirements.txt
-.\starter\install_plugin.ps1 -Plugin ojhc_link
-```
+1. 到 [GitHub Releases](https://github.com/YiHx/AlgorithmContestPP/releases/latest) 下载 `algorithmcontestpp-dghub.zip`，在 DGHub 的插件中心导入。
+2. 同一页下载 `Source code (zip)` 并解压。在解压后的源码目录打开 PowerShell，运行 `python -m pip install -r requirements.txt`。
+3. 回到插件配置，把引擎目录指向解压后的 `engine` 文件夹。
 
-从 [GitHub Releases](https://github.com/YiHx/AlgorithmContestPP/releases) 下载插件 ZIP 时，可以在 DGHub 的插件中心直接导入，省掉第二行命令。引擎仍从仓库或 Release 的源码包取得，放到本机后在插件配置里选 `engine` 目录。
+如果已经把仓库克隆到本地，也可以在仓库目录跑 `.\starter\install_plugin.ps1 -Plugin ojhc_link` 来安装插件，装完重开 DGHub。
 
-牛客、AtCoder 和洛谷需要浏览器扩展。Codeforces 装了扩展可以走快速通道。Chrome、Edge 和 Firefox 共用仓库里的 `extension` 目录，按你的浏览器选对应的[安装步骤](extension/README.md#安装浏览器扩展)。
+牛客、AtCoder 和洛谷要装浏览器扩展。CF 不装也能用，装了能更快收到判题。Chrome、Edge 和 Firefox 都用源码里的 `extension` 目录，按自己用的浏览器看[安装步骤](extension/README.md#安装浏览器扩展)。
 
-如果不知道从哪一步开始，可以把[仓库链接](https://github.com/YiHx/AlgorithmContestPP)复制到 DSH（DeepSeek Harness），告诉大肥鱼你用的是哪个浏览器，请它按 README 帮你安装。仓库链接打不开时，也可以把已经解压的源码目录交给它。
+卡在哪一步的话，把仓库链接丢给 DSH（DeepSeek Harness），跟大肥鱼说你用的是什么浏览器，让它照着这份 README 帮你装。链接打不开就把解压后的源码目录给它。
 
 ## 开一场
 
