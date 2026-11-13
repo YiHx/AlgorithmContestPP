@@ -63,7 +63,14 @@ jobs:
           node --check extension/popup.js
           npx --yes web-ext@10 lint --source-dir extension
       - name: Build ZIP packages
-        run: python scripts/package.py
+        run: |
+          python -m pip install -r requirements.txt pyinstaller==6.12.0
+          python scripts/package.py
+      - name: Test the packaged engine
+        shell: pwsh
+        run: |
+          Expand-Archive dist/algorithmcontestpp-dghub.zip "$env:RUNNER_TEMP/ojhc"
+          & "$env:RUNNER_TEMP/ojhc/engine/ojhc-engine.exe" selftest
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: algorithmcontestpp-packages

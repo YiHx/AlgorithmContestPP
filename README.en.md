@@ -12,28 +12,22 @@ Algorithm Contest++ is a DGHub plugin that connects online judge verdicts to a D
 
 ## Installation
 
-You'll need [DGHub](http://dghub.top/) and Python 3.10 or newer on Windows.
+On Windows x64, install Algorithm Contest++ from the DGHub community plugin store. You can also download `algorithmcontestpp-dghub.zip` from [GitHub Releases](https://github.com/YiHx/AlgorithmContestPP/releases/latest) and import it in the DGHub Plugin Center. The plugin includes the engine and its Python runtime.
 
-1. Download `algorithmcontestpp-dghub.zip` from [GitHub Releases](https://github.com/YiHx/AlgorithmContestPP/releases/latest) and import it in the DGHub Plugin Center.
-2. Download and unzip `Source code (zip)` from the same page. Open PowerShell in the extracted source folder and run `python -m pip install -r requirements.txt`.
-3. Open the plugin settings and point the engine directory at the extracted `engine` folder.
-
-To install from a local clone, run `.\starter\install_plugin.ps1 -Plugin ojhc_link` from the repository root, then restart DGHub.
-
-Nowcoder, AtCoder, and Luogu require the browser extension. Codeforces works through its official API and can receive verdicts sooner with the extension. Chrome, Edge, and Firefox all use the `extension` folder from the source archive.
+Nowcoder, AtCoder, and Luogu require the browser extension. Codeforces works through its official API and can receive verdicts sooner with the extension. Download and extract `algorithmcontestpp-browser.zip` from the same release. Use the extracted folder in the steps below.
 
 | Browser | How to load the extension |
 | --- | --- |
-| Chrome 121+ | Open `chrome://extensions`, turn on Developer mode, and select **Load unpacked**. Choose the `extension` folder. |
-| Edge 121+ | Open `edge://extensions`, turn on Developer mode, and select **Load unpacked**. Choose the `extension` folder. |
-| Firefox 140+ | Open `about:debugging#/runtime/this-firefox`, select **Load Temporary Add-on**, and choose `extension/manifest.json`. Reload the add-on after restarting Firefox. A permanent install requires a Mozilla-signed XPI. |
+| Chrome 121+ | Open `chrome://extensions`, turn on Developer mode, and select **Load unpacked**. Choose the extracted folder. |
+| Edge 121+ | Open `edge://extensions`, turn on Developer mode, and select **Load unpacked**. Choose the extracted folder. |
+| Firefox 140+ | Open `about:debugging#/runtime/this-firefox`, select **Load Temporary Add-on**, and choose `manifest.json` in the extracted folder. Reload the add-on after restarting Firefox. A permanent install requires a Mozilla-signed XPI. |
 
 For installation help, share the repository link and your browser name with 大肥鱼 in DSH (DeepSeek Harness) and ask it to follow this guide. You can also provide the extracted source folder.
 
 ## Start a session
 
 1. Open the **算法竞赛++** plugin settings in the DGHub Plugin Center.
-2. In **Engine Launcher** (「Engine 启动器」), enter the contest URL and your username on that platform, then enable auto-start. If DGHub cannot find the engine, select the repository's `engine` folder.
+2. In **Engine Launcher** (「Engine 启动器」), enter the contest URL and your username on that platform, then enable auto-start.
 3. For your first run, switch off **Device output** (「带设备输出」) before enabling the plugin. If you're using the browser extension, sign in and keep the page for the same contest open.
 4. Wait for the engine to start receiving data, then make a new submission. With the Codeforces extension, the terminal reports that the submission baseline is ready. New verdicts received from the extension are marked `[fast]`.
 5. To use device feedback, end the trial run with Ctrl+C and disable the plugin. Connect the device in DGHub, turn on device output, and enable the plugin again. Wait for `[device] 插件就绪` before making a new submission.

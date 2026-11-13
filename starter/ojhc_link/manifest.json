@@ -1,10 +1,10 @@
 {
   "id": "ojhc_link",
   "name": "算法竞赛++",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "sdk": "1",
   "author": "xuanh08",
-  "description": "接收本机算法竞赛++ 引擎的判题反馈，通过 DGHub 联动设备。需配合本机引擎运行。",
+  "description": "将在线评测平台的判题结果接入 DGHub。发布包内置引擎。",
   "entry": "main.py",
   "capabilities": {
     "startup_check": true
@@ -47,13 +47,13 @@
         {
           "key": "engine_dir",
           "type": "text",
-          "label": "引擎目录（ojhC.py 所在目录，留空自动查找）",
+          "label": "引擎目录（源码运行时使用，发布包自动使用内置引擎）",
           "default": ""
         },
         {
           "key": "engine_python",
           "type": "text",
-          "label": "Python 可执行文件（默认 python）",
+          "label": "Python 可执行文件（仅源码运行时使用）",
           "default": "python"
         }
       ]

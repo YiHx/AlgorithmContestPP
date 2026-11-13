@@ -389,7 +389,7 @@ class OjhPlugin:
         ]
         for candidate in candidates:
             try:
-                if (Path(candidate) / "ojhC.py").is_file():
+                if (Path(candidate) / "ojhc.py").is_file():
                     return Path(candidate)
             except OSError:
                 continue
@@ -421,12 +421,17 @@ class OjhPlugin:
                 return match.group(1)
         return url
 
-    def _build_engine_args(self):
+    def _build_engine_args(self, engine_dir=None):
         url = self._normalize_contest_url(str(self.cfg.get("engine_url") or ""))
         handle = str(self.cfg.get("engine_handle") or "").strip()
         if not url or not handle:
             return None
-        args = [self._resolve_python(), "ojhC.py", "run", "--url", url, "--handle", handle]
+        if engine_dir is None:
+            engine = PLUGIN_ROOT / "engine" / "ojhc-engine.exe"
+            args = [str(engine)]
+        else:
+            args = [self._resolve_python(), "-u", "ojhc.py"]
+        args += ["run", "--url", url, "--handle", handle]
         if self.cfg.get("engine_device", True):
             args += ["--device", "--trust-app-limit"]
         if self.cfg.get("engine_virtual", False):
@@ -453,18 +458,21 @@ class OjhPlugin:
             if self.engine_writer is not None or self._launch_attempted:
                 return
 
-            args = self._build_engine_args()
-            engine_dir = self._engine_dir()
+            bundled = PLUGIN_ROOT / "engine" / "ojhc-engine.exe"
+            engine_dir = None if bundled.is_file() else self._engine_dir()
+            args = self._build_engine_args(engine_dir)
             self._launch_attempted = True
-            if not args or engine_dir is None:
-                await self._dg_log("启动器：URL/用户名未填，或找不到引擎目录（ojhC.py 所在目录）", "warning")
+            if not args or (engine_dir is None and not bundled.is_file()):
+                await self._dg_log("启动器：URL/用户名未填，或找不到引擎", "warning")
                 return
             try:
                 # 直接持有 Python 进程，改配置时能关掉引擎本身并释放端口。
+                env = os.environ.copy()
+                env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
                 self._engine_proc = subprocess.Popen(
-                    [args[0], "-u", *args[1:]], cwd=str(engine_dir),
+                    args, cwd=str(engine_dir or bundled.parent), env=env,
                     creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
-                await self._dg_log("启动器：已打开引擎终端 → " + " ".join(args[2:]))
+                await self._dg_log("启动器：已打开引擎终端")
             except OSError as exc:
                 await self._dg_log(f"启动器：启动引擎失败：{exc}", "warning")
 

@@ -12,22 +12,16 @@
 
 ## 安装
 
-先在 Windows 上装好 [DGHub](http://dghub.top/) 和 Python 3.10 或更新版本。
+在 Windows x64 上，从 DGHub 社区插件商店安装「算法竞赛++」。也可以从 [GitHub Releases](https://github.com/YiHx/AlgorithmContestPP/releases/latest) 下载 `algorithmcontestpp-dghub.zip`，在 DGHub 插件中心导入。插件包自带引擎和 Python 运行环境。
 
-1. 到 [GitHub Releases](https://github.com/YiHx/AlgorithmContestPP/releases/latest) 下载 `algorithmcontestpp-dghub.zip`，在 DGHub 的插件中心导入。
-2. 同一页下载 `Source code (zip)` 并解压。在解压后的源码目录打开 PowerShell，运行 `python -m pip install -r requirements.txt`。
-3. 回到插件配置，把引擎目录指向解压后的 `engine` 文件夹。
-
-已克隆仓库的用户也可以在仓库根目录运行 `.\starter\install_plugin.ps1 -Plugin ojhc_link` 安装插件，随后重启 DGHub。
-
-牛客、AtCoder 和洛谷需要浏览器扩展。Codeforces 默认可通过官方 API 获取判题结果，安装扩展后可使用快速通道。Chrome、Edge 和 Firefox 共用源码中的 `extension` 目录，具体操作见[浏览器扩展安装说明](extension/README.md#安装浏览器扩展)。
+牛客、AtCoder 和洛谷需要浏览器扩展。Codeforces 默认可通过官方 API 获取判题结果，安装扩展后可使用快速通道。Chrome、Edge 和 Firefox 均可使用 Release 中的 `algorithmcontestpp-browser.zip`，解压后加载，具体操作见[浏览器扩展安装说明](extension/README.md#安装浏览器扩展)。
 
 需要安装协助时，可以将仓库链接和所用浏览器提供给 DSH（DeepSeek Harness）中的大肥鱼，请它按本文操作。也可以直接提供解压后的源码目录。
 
 ## 启动比赛会话
 
 1. 在 DGHub 的插件中心打开「算法竞赛++」的配置页。
-2. 在「Engine 启动器」填比赛网址和该平台的用户名，打开自动启动。引擎目录找不到时，填本仓库的 `engine` 文件夹。
+2. 在「Engine 启动器」填比赛网址和该平台的用户名，打开自动启动。
 3. 第一次跑先关闭「带设备输出」，启用插件。使用扩展的平台要登录并保持同一场比赛的页面打开。
 4. 等引擎开始接收数据后，再提交一次。使用 Codeforces 快速通道时，终端会先显示「采集已建立基线」，之后通过扩展收到的新判题会标记为 `[fast]`。
 5. 想用设备反馈时，先在引擎窗口按 Ctrl+C 结束试跑，再停用插件。连上设备、打开「带设备输出」后重新启用插件。等终端显示 `[device] 插件就绪`，再交新提交。
