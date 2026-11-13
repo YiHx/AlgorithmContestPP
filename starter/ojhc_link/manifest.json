@@ -1,7 +1,7 @@
 {
   "id": "ojhc_link",
   "name": "算法竞赛++",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "sdk": "1",
   "author": "xuanh08",
   "description": "将在线评测平台的判题结果接入 DGHub。发布包内置引擎。",
@@ -36,7 +36,7 @@
           "key": "engine_device",
           "type": "bool",
           "label": "带设备输出（关闭=只记录不出电）",
-          "default": true
+          "default": false
         },
         {
           "key": "engine_virtual",

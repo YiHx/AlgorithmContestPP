@@ -51,10 +51,11 @@ class CodeforcesAdapter:
         requires_auth=False, source_level="A")
 
     def __init__(self, contest_id: str, handle: str, rating: int | None = None,
-                 min_interval_s: float = MIN_INTERVAL_S) -> None:
+                 min_interval_s: float = MIN_INTERVAL_S, duration_s: float = 7200) -> None:
         self.contest_id = str(contest_id)
         self.handle = handle
         self.rating = rating
+        self.duration_s = duration_s
         self.limiter = RateLimiter(min_interval_s)
         self._meta: ContestMeta | None = None
         self._rows: list[dict] = []
@@ -68,15 +69,24 @@ class CodeforcesAdapter:
         self._native_batch: list[Submission] = []
         self._native_baseline: int | None = None
         self._reported: set[str] = set()
-        self._native_error = ""
+        self._standings_task: asyncio.Task | None = None
+        self._next_standings_at = 0.0
+        self._next_submissions_at = 0.0
         self.poll_sleep_s = 2.2
 
     async def load_meta(self) -> ContestMeta:
-        await self.limiter.wait()
-        data = _http_get_json(f"{CF_API}contest.standings?contestId={self.contest_id}")
-        if data.get("status") != "OK":
-            raise PlatformError(f"CF API: {data.get('comment')}")
-        res = data["result"]
+        try:
+            res = await self._fetch_standings_data()
+        except Exception as exc:
+            if self.fast is None:
+                raise
+            print(f"[live] CF contest.standings 启动请求失败，使用配置的比赛时长继续：{exc}")
+            self._next_standings_at = time.monotonic() + 45
+            return ContestMeta(
+                platform=self.platform, contest_id=self.contest_id,
+                name=f"Contest {self.contest_id}", duration_s=self.duration_s,
+                url=f"https://codeforces.com/contest/{self.contest_id}",
+            )
         contest = res.get("contest", {})
         self._rows = res.get("rows", [])
         duration = float(contest.get("durationSeconds") or 7200)
@@ -132,14 +142,17 @@ class CodeforcesAdapter:
                 self._native_baseline = max((int(sub.sid) for sub in batch), default=0)
             else:
                 self._native_batch = [sub for sub in batch if int(sub.sid) > self._native_baseline]
-            if time.monotonic() - self._standings_at >= 45:
-                await self._fetch_standings(0.0)
-            self._native_error = ""
         except Exception as exc:  # 网络故障不影响浏览器通道
-            message = str(exc)
-            if message != self._native_error:
-                print(f"[live] CF 官方 API 暂不可用：{message}")
-                self._native_error = message
+            self._next_submissions_at = time.monotonic() + 10
+            print(f"[live] CF contest.status 暂不可用，10 秒后重试：{exc}")
+
+    async def _refresh_standings(self) -> None:
+        try:
+            await self._fetch_standings(0.0)
+        except Exception as exc:
+            print(f"[live] CF contest.standings 暂不可用，45 秒后重试：{exc}")
+        finally:
+            self._next_standings_at = time.monotonic() + 45
 
     async def poll_live(self, after: str | None) -> list[Submission]:
         if self.fast is None:
@@ -151,8 +164,12 @@ class CodeforcesAdapter:
             self._fast_wait_logged = True
             print("[fast] 等待浏览器扩展采集 CF 页面；官方 API 在后台运行")
 
-        if self._native_task is None or self._native_task.done():
+        now = time.monotonic()
+        if now >= self._next_submissions_at and (self._native_task is None or self._native_task.done()):
             self._native_task = asyncio.create_task(self._refresh_native())
+        if (now >= max(self._standings_at + 45, self._next_standings_at)
+                and (self._standings_task is None or self._standings_task.done())):
+            self._standings_task = asyncio.create_task(self._refresh_standings())
         batch, self._native_batch = self._native_batch, []
         collected = {sub.sid: sub for sub in batch}
         fast_ids = set()
@@ -172,26 +189,30 @@ class CodeforcesAdapter:
         return ready
 
     async def close_live(self) -> None:
-        if self._native_task is not None:
-            self._native_task.cancel()
-            await asyncio.gather(self._native_task, return_exceptions=True)
-            self._native_task = None
+        tasks = [task for task in (self._native_task, self._standings_task) if task is not None]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._native_task = self._standings_task = None
 
     async def standings(self, elapsed_s: float) -> Standings:
         now = time.monotonic()
-        if self._native_task is not None:
+        if self.fast is not None:
             return replace(self._standings, rel_s=elapsed_s) if self._standings else Standings(rel_s=elapsed_s)
         if self._standings and now - self._standings_at < 45:
             return self._standings
         return await self._fetch_standings(elapsed_s)
 
     async def _fetch_standings(self, elapsed_s: float) -> Standings:
+        return self._update_standings(await self._fetch_standings_data(), elapsed_s)
+
+    async def _fetch_standings_data(self) -> dict:
         await self.limiter.wait()
         data = await asyncio.to_thread(
             _http_get_json, f"{CF_API}contest.standings?contestId={self.contest_id}")
         if data.get("status") != "OK":
             raise PlatformError(f"CF API: {data.get('comment')}")
-        return self._update_standings(data["result"], elapsed_s)
+        return data["result"]
 
     def _update_standings(self, res: dict, elapsed_s: float) -> Standings:
         rows = res.get("rows", [])

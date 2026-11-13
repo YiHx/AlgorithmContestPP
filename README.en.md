@@ -54,7 +54,7 @@ The default cooldown is 10 seconds across all events and 30 seconds between even
 
 ## Command line
 
-To see how verdict events look without using a device, replay the bundled sample contest.
+These commands run from source and require Python and the dependencies in the repository's `requirements.txt`. Store users can start sessions from DGHub. The sample replay below runs with device output off.
 
 ```powershell
 cd engine

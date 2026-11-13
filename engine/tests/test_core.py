@@ -235,6 +235,21 @@ class TestPlatforms(unittest.TestCase):
 
 
 class TestCFFastPath(unittest.IsolatedAsyncioTestCase):
+    async def test_metadata_failure_keeps_browser_path_available(self) -> None:
+        from http.client import IncompleteRead
+        from unittest.mock import patch
+        from ojhc_lib.platforms import codeforces as cf
+
+        adapter = cf.CodeforcesAdapter("2256", "tester", duration_s=5400)
+        hub = bridge_mod.BridgeHub("codeforces", "2256", "tester")
+        with patch.object(adapter, "_fetch_standings_data", side_effect=IncompleteRead(b"partial")):
+            with self.assertRaises(IncompleteRead):
+                await adapter.load_meta()
+            adapter.attach_fast(hub)
+            meta = await adapter.load_meta()
+        self.assertEqual(meta.duration_s, 5400)
+        self.assertGreater(adapter._next_standings_at, cf.time.monotonic())
+
     def test_page_baseline_and_final_verdicts(self) -> None:
         hub = bridge_mod.BridgeHub("codeforces", "2256", "tester")
         historical = {"sid": "100", "verdict": "WRONG_ANSWER"}

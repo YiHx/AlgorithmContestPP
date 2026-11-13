@@ -61,7 +61,7 @@ def create_adapter(platform: str, contest_id: str, handle: str,
                    session_start_ts: float | None = None) -> PlatformAdapter:
     platform = (platform or "").lower()
     if platform == "codeforces":
-        return CodeforcesAdapter(contest_id, handle, rating)
+        return CodeforcesAdapter(contest_id, handle, rating, duration_s=duration_s)
     if platform == "vjudge":
         return VJudgeAdapter(contest_id, handle, rating, duration_s, session_start_ts)
     if platform in BRIDGED:

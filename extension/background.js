@@ -28,31 +28,39 @@ async function fetchJson(url, options) {
   return resp.json();
 }
 
-async function discover() {
+function matchesSession(page, session) {
+  return !page || (page.platform === session.platform && page.contestId === String(session.contest_id));
+}
+
+async function discover(page) {
   for (const port of PORTS) {
     const base = `http://127.0.0.1:${port}`;
     try {
       await fetchJson(base + "/health", { method: "GET" });
       const session = await fetchJson(base + "/session");
+      if (!matchesSession(page, session)) continue;
       cached = { base, session };
       return cached;
     } catch (e) {
       // 该端口没有引擎，继续下一个
     }
   }
-  cached = null;
   return null;
 }
 
-async function refreshSession() {
-  if (!cached) return discover();
+async function refreshSession(page) {
+  if (!cached) return discover(page);
+  const current = cached;
   try {
-    cached.session = await fetchJson(cached.base + "/session");
-    return cached;
+    const session = await fetchJson(current.base + "/session");
+    if (matchesSession(page, session)) {
+      cached = { base: current.base, session };
+      return cached;
+    }
   } catch (e) {
-    cached = null;
-    return discover();
+    if (cached === current) cached = null;
   }
+  return discover(page);
 }
 
 async function post(path, payload, token) {
@@ -82,7 +90,7 @@ runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
       if (msg && msg.type === "get_session") {
-        const result = msg.force ? await discover() : await refreshSession();
+        const result = msg.force ? await discover(msg.collector) : await refreshSession(msg.collector);
         const session = result?.session;
         if (!session || (msg.collector && !claimCollector(msg.collector, session, sender.tab))) {
           sendResponse(null);

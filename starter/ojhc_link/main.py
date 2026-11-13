@@ -432,7 +432,7 @@ class OjhPlugin:
         else:
             args = [self._resolve_python(), "-u", "ojhc.py"]
         args += ["run", "--url", url, "--handle", handle]
-        if self.cfg.get("engine_device", True):
+        if self.cfg.get("engine_device", False):
             args += ["--device", "--trust-app-limit"]
         if self.cfg.get("engine_virtual", False):
             args += ["--virtual"]

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "算法竞赛++ 浏览器桥接",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "把 AtCoder / 洛谷 / 牛客 / Codeforces 比赛页面数据（登录态、页面上下文）转发给本机 算法竞赛++ Engine，不接管账号密码。",
   "minimum_chrome_version": "121",
   "browser_specific_settings": {

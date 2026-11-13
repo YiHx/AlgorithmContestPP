@@ -331,8 +331,9 @@ class SessionRunner:
             print(f"{head} {event.detail:<22} {p}  —")
             return
         if decision.would_fire:
+            output = "DGHub 已接受" if decision.allowed else "模拟输出（would-fire）"
             print(f"{head} {event.detail:<22} {p}  s={decision.s_eff} → "
-                  f"{decision.intensity:2d}% / {decision.duration_s:.1f}s  ⚡would-fire")
+                  f"{decision.intensity:2d}% / {decision.duration_s:.1f}s  {output}")
         else:
             reason = decision.deny[0] if decision.deny else "未通过"
             print(f"{head} {event.detail:<22} {p}  ✗ {reason}")
