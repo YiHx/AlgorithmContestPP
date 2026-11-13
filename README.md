@@ -12,7 +12,7 @@
 
 ## 安装
 
-在 Windows x64 上，从 DGHub 社区插件商店安装「算法竞赛++」。也可以从 [GitHub Releases](https://github.com/YiHx/AlgorithmContestPP/releases/latest) 下载 `algorithmcontestpp-dghub.zip`，在 DGHub 插件中心导入。插件包自带引擎和 Python 运行环境。
+在 Windows x64 上，从 [DGHub 社区插件商店](https://dghub.top/2.0/plugins/34)安装「算法竞赛++」。也可以从 [GitHub Releases](https://github.com/YiHx/AlgorithmContestPP/releases/latest) 下载 `algorithmcontestpp-dghub.zip`，在 DGHub 插件中心导入。插件包自带引擎和 Python 运行环境。
 
 牛客、AtCoder 和洛谷需要浏览器扩展。Codeforces 默认可通过官方 API 获取判题结果，安装扩展后可使用快速通道。Chrome、Edge 和 Firefox 均可使用 Release 中的 `algorithmcontestpp-browser.zip`，解压后加载，具体操作见[浏览器扩展安装说明](extension/README.md#安装浏览器扩展)。
 

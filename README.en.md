@@ -12,7 +12,7 @@ Algorithm Contest++ is a DGHub plugin that connects online judge verdicts to a D
 
 ## Installation
 
-On Windows x64, install Algorithm Contest++ from the DGHub community plugin store. You can also download `algorithmcontestpp-dghub.zip` from [GitHub Releases](https://github.com/YiHx/AlgorithmContestPP/releases/latest) and import it in the DGHub Plugin Center. The plugin includes the engine and its Python runtime.
+On Windows x64, install Algorithm Contest++ from the [DGHub community plugin store](https://dghub.top/2.0/plugins/34). You can also download `algorithmcontestpp-dghub.zip` from [GitHub Releases](https://github.com/YiHx/AlgorithmContestPP/releases/latest) and import it in the DGHub Plugin Center. The plugin includes the engine and its Python runtime.
 
 Nowcoder, AtCoder, and Luogu require the browser extension. Codeforces works through its official API and can receive verdicts sooner with the extension. Download and extract `algorithmcontestpp-browser.zip` from the same release. Use the extracted folder in the steps below.
 
